@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>openboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="toolbar">
+    <span class="app-title">openboard</span>
+    <button id="btn-add-sticky">+ 付箋</button>
+    <div class="toolbar-sep"></div>
+    <button id="btn-export">保存 (.svg)</button>
+    <label class="toolbar-btn" id="btn-import-label">
+      開く (.svg)
+      <input type="file" id="btn-import" accept=".svg">
+    </label>
+  </div>
+  <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="src/model.js"></script>
+  <script src="src/view.js"></script>
+  <script src="src/io.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

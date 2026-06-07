@@ -1,0 +1,16 @@
+node_modules/
+
+# macOS
+.DS_Store
+
+# WSL由来のWindowsゾーン識別ファイル
+*.Zone.Identifier
+
+# PMO管理ディレクトリ（非公開）
+pmo/
+
+# 設定ファイル（非公開）
+config/
+
+# ユーザーデータ（非公開）
+data/
