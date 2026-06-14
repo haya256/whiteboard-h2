@@ -44,9 +44,35 @@ const Model = (() => {
       return node;
     },
 
+    addShape(shape) {
+      const node = {
+        id: crypto.randomUUID(),
+        type: 'shape',
+        shape,
+        x: 80 + Math.random() * 320,
+        y: 80 + Math.random() * 160,
+        width: 160,
+        height: 120,
+        content: '',
+        style: {
+          background: '#ffffff',
+          border: '#4a90e2',
+          fontSize: 14,
+          color: '#333333'
+        }
+      };
+      _nodes.push(node);
+      return node;
+    },
+
     updatePosition(id, x, y) {
       const n = _nodes.find(n => n.id === id);
       if (n) { n.x = x; n.y = y; }
+    },
+
+    updateSize(id, w, h) {
+      const n = _nodes.find(n => n.id === id);
+      if (n) { n.width = Math.max(40, w); n.height = Math.max(40, h); }
     },
 
     updateContent(id, content) {

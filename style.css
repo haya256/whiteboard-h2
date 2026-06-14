@@ -119,3 +119,59 @@ html, body {
   cursor: text;
   overflow: auto;
 }
+
+/* ---- Shape ---- */
+.shape-bg {
+  cursor: grab;
+  filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.14));
+  transition: filter 0.1s;
+}
+
+.node.selected .shape-bg {
+  stroke-width: 3 !important;
+  filter: drop-shadow(0 0 8px rgba(74,144,226,0.45));
+}
+
+.shape-fo {
+  pointer-events: none;
+  overflow: visible;
+}
+
+.shape-text-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shape-text {
+  text-align: center;
+  padding: 6px 10px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #333;
+  word-break: break-word;
+  outline: none;
+  user-select: none;
+  cursor: inherit;
+  min-width: 4px;
+}
+
+.shape-text[contenteditable="true"] {
+  user-select: text;
+  cursor: text;
+}
+
+/* ---- Resize handles ---- */
+.resize-handle {
+  display: none;
+  fill: #fff;
+  stroke: #4a90e2;
+  stroke-width: 1.5;
+}
+
+.node.selected .resize-handle {
+  display: block;
+}

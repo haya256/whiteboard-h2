@@ -70,31 +70,69 @@ const IO = (() => {
 
     // 各ノードをSVGネイティブ要素で描画（foreignObject不使用でビューア互換性を確保）
     nodes.forEach(node => {
-      if (node.type !== 'sticky') return;
-
       const g = document.createElementNS(SVG_NS, 'g');
 
-      const rect = document.createElementNS(SVG_NS, 'rect');
-      rect.setAttribute('x', node.x);
-      rect.setAttribute('y', node.y);
-      rect.setAttribute('width', node.width);
-      rect.setAttribute('height', node.height);
-      rect.setAttribute('rx', '6');
-      rect.setAttribute('fill', node.style.background);
-      g.appendChild(rect);
+      if (node.type === 'sticky') {
+        const rect = document.createElementNS(SVG_NS, 'rect');
+        rect.setAttribute('x', node.x);
+        rect.setAttribute('y', node.y);
+        rect.setAttribute('width', node.width);
+        rect.setAttribute('height', node.height);
+        rect.setAttribute('rx', '6');
+        rect.setAttribute('fill', node.style.background);
+        g.appendChild(rect);
 
-      const lines = node.content ? node.content.split('\n') : [''];
-      const lineH = node.style.fontSize * 1.55;
-      lines.forEach((line, i) => {
-        const t = document.createElementNS(SVG_NS, 'text');
-        t.setAttribute('x', node.x + 12);
-        t.setAttribute('y', node.y + 14 + node.style.fontSize + i * lineH);
-        t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
-        t.setAttribute('font-size', node.style.fontSize);
-        t.setAttribute('fill', node.style.color);
-        t.textContent = line;
-        g.appendChild(t);
-      });
+        const lines = node.content ? node.content.split('\n') : [''];
+        const lineH = node.style.fontSize * 1.55;
+        lines.forEach((line, i) => {
+          const t = document.createElementNS(SVG_NS, 'text');
+          t.setAttribute('x', node.x + 12);
+          t.setAttribute('y', node.y + 14 + node.style.fontSize + i * lineH);
+          t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
+          t.setAttribute('font-size', node.style.fontSize);
+          t.setAttribute('fill', node.style.color);
+          t.textContent = line;
+          g.appendChild(t);
+        });
+      } else if (node.type === 'shape') {
+        const { x, y, width: w, height: h, style: s } = node;
+        let bg;
+        if (node.shape === 'rect') {
+          bg = document.createElementNS(SVG_NS, 'rect');
+          bg.setAttribute('x', x); bg.setAttribute('y', y);
+          bg.setAttribute('width', w); bg.setAttribute('height', h);
+          bg.setAttribute('rx', '8');
+        } else if (node.shape === 'ellipse') {
+          bg = document.createElementNS(SVG_NS, 'ellipse');
+          bg.setAttribute('cx', x + w / 2); bg.setAttribute('cy', y + h / 2);
+          bg.setAttribute('rx', w / 2); bg.setAttribute('ry', h / 2);
+        } else {
+          bg = document.createElementNS(SVG_NS, 'polygon');
+          bg.setAttribute('points', `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`);
+        }
+        bg.setAttribute('fill', s.background);
+        bg.setAttribute('stroke', s.border);
+        bg.setAttribute('stroke-width', '2');
+        g.appendChild(bg);
+
+        if (node.content) {
+          const lines = node.content.split('\n');
+          const lineH = s.fontSize * 1.4;
+          const totalH = lines.length * lineH;
+          const baseY = y + h / 2 - totalH / 2 + s.fontSize * 0.85;
+          lines.forEach((line, i) => {
+            const t = document.createElementNS(SVG_NS, 'text');
+            t.setAttribute('x', x + w / 2);
+            t.setAttribute('y', baseY + i * lineH);
+            t.setAttribute('text-anchor', 'middle');
+            t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
+            t.setAttribute('font-size', s.fontSize);
+            t.setAttribute('fill', s.color);
+            t.textContent = line;
+            g.appendChild(t);
+          });
+        }
+      }
 
       svg.appendChild(g);
     });

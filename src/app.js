@@ -4,7 +4,6 @@
   const canvas = document.getElementById('canvas');
   View.init(canvas);
 
-  // localStorageから復元
   const saved = IO.load();
   if (saved?.nodes?.length) {
     Model.setNodes(saved.nodes);
@@ -21,9 +20,17 @@
     IO.save();
   });
 
-  document.getElementById('btn-export').addEventListener('click', () => {
-    IO.exportSVG();
+  ['rect', 'ellipse', 'diamond'].forEach(shape => {
+    document.getElementById(`btn-add-${shape}`).addEventListener('click', () => {
+      const node = Model.addShape(shape);
+      View.addNode(node);
+      Model.select(node.id);
+      View.selectNode(node.id);
+      IO.save();
+    });
   });
+
+  document.getElementById('btn-export').addEventListener('click', () => IO.exportSVG());
 
   document.getElementById('btn-import').addEventListener('change', e => {
     const file = e.target.files[0];
@@ -37,28 +44,85 @@
     e.target.value = '';
   });
 
-  // ---- ドラッグ ----
+  // ---- ドラッグ & リサイズ ----
 
   let drag = null;
+  let resize = null;
   let editing = false;
 
+  const MIN_SIZE = 40;
+
+  function calcResize(dir, dx, dy, oX, oY, oW, oH) {
+    let x = oX, y = oY, w = oW, h = oH;
+
+    if (dir === 'nw' || dir === 'w' || dir === 'sw') {
+      const nw = oW - dx;
+      if (nw < MIN_SIZE) { x = oX + oW - MIN_SIZE; w = MIN_SIZE; }
+      else { x = oX + dx; w = nw; }
+    }
+    if (dir === 'ne' || dir === 'e' || dir === 'se') {
+      w = Math.max(MIN_SIZE, oW + dx);
+    }
+    if (dir === 'nw' || dir === 'n' || dir === 'ne') {
+      const nh = oH - dy;
+      if (nh < MIN_SIZE) { y = oY + oH - MIN_SIZE; h = MIN_SIZE; }
+      else { y = oY + dy; h = nh; }
+    }
+    if (dir === 'sw' || dir === 's' || dir === 'se') {
+      h = Math.max(MIN_SIZE, oH + dy);
+    }
+
+    return { x, y, w, h };
+  }
+
   function onMouseMove(e) {
-    if (!drag) return;
     const pt = View.svgPoint(e);
-    const x = pt.x - drag.ox;
-    const y = pt.y - drag.oy;
-    Model.updatePosition(drag.id, x, y);
-    View.moveNode(drag.id, x, y);
+
+    if (resize) {
+      const dx = pt.x - resize.startX;
+      const dy = pt.y - resize.startY;
+      const { x, y, w, h } = calcResize(resize.dir, dx, dy, resize.origX, resize.origY, resize.origW, resize.origH);
+      Model.updatePosition(resize.id, x, y);
+      Model.updateSize(resize.id, w, h);
+      View.moveNode(resize.id, x, y);
+      View.resizeNode(resize.id, w, h);
+      return;
+    }
+
+    if (drag) {
+      const x = pt.x - drag.ox;
+      const y = pt.y - drag.oy;
+      Model.updatePosition(drag.id, x, y);
+      View.moveNode(drag.id, x, y);
+    }
   }
 
   function onMouseUp() {
-    if (drag) { IO.save(); drag = null; }
+    if (drag || resize) { IO.save(); drag = null; resize = null; }
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
   }
 
   canvas.addEventListener('mousedown', e => {
     if (editing) return;
+
+    const handleEl = e.target.closest('.resize-handle');
+    if (handleEl) {
+      e.preventDefault();
+      const nodeEl = handleEl.closest('.node');
+      const id = nodeEl.dataset.id;
+      const node = Model.findById(id);
+      const pt = View.svgPoint(e);
+      resize = {
+        id, dir: handleEl.dataset.dir,
+        startX: pt.x, startY: pt.y,
+        origX: node.x, origY: node.y,
+        origW: node.width, origH: node.height
+      };
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      return;
+    }
 
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) {
@@ -87,6 +151,7 @@
     if (!nodeEl) return;
 
     drag = null;
+    resize = null;
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
 
@@ -104,7 +169,6 @@
     if (editing) return;
     if (e.key !== 'Delete' && e.key !== 'Backspace') return;
 
-    // 入力フォーカスがある場合は無視
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
