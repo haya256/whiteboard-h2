@@ -70,6 +70,18 @@ html, body {
   color: #fff !important;
 }
 
+#toolbar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: #2a2b3d !important;
+  color: #6b7280 !important;
+}
+
+#toolbar button:disabled:hover {
+  background: #2a2b3d !important;
+  color: #6b7280 !important;
+}
+
 #zoom-label {
   min-width: 44px;
   text-align: center;

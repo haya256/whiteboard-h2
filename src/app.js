@@ -12,6 +12,69 @@
   }
   if (saved?.viewport) View.setViewport(saved.viewport);
 
+  // ---- Undo/Redo（操作履歴） ----
+  // nodes/edges のみを対象にスナップショットを積む。viewport・選択状態は対象外。
+  // 読み込み直後の状態（saved があればそれ、なければ空の状態）を必ず基点として記録する。
+  History.init(
+    () => ({ nodes: Model.getNodes(), edges: Model.getEdges() }),
+    state => {
+      Model.setNodes(state.nodes);
+      Model.setEdges(state.edges);
+      View.renderAll(Model.getNodes());
+      View.selectNodes([]);
+      View.selectEdge(null);
+      IO.save();
+    }
+  );
+
+  const btnUndo = document.getElementById('btn-undo');
+  const btnRedo = document.getElementById('btn-redo');
+
+  // 元に戻す/やり直すボタンの活性状態を最新の履歴に合わせて更新する
+  function updateHistoryButtons() {
+    btnUndo.disabled = !History.canUndo();
+    btnRedo.disabled = !History.canRedo();
+  }
+  updateHistoryButtons();
+
+  // 操作を確定するたびに呼ぶ：履歴に積んでから保存する
+  function commit() {
+    History.push();
+    IO.save();
+    updateHistoryButtons();
+  }
+
+  function performUndo() {
+    if (editing) return; // テキスト編集中はブラウザ標準のundoに任せる（横取りしない）
+    if (connectMode) { setConnectMode(false); return; } // 接続モード中はまずモード解除のみ行う
+    if (History.undo()) updateHistoryButtons();
+  }
+
+  function performRedo() {
+    if (editing) return;
+    if (connectMode) { setConnectMode(false); return; }
+    if (History.redo()) updateHistoryButtons();
+  }
+
+  btnUndo.addEventListener('click', performUndo);
+  btnRedo.addEventListener('click', performRedo);
+
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const key = e.key.toLowerCase();
+    const isUndo = key === 'z' && !e.shiftKey;
+    const isRedo = (key === 'z' && e.shiftKey) || key === 'y';
+    if (!isUndo && !isRedo) return;
+
+    // 入力欄にフォーカスがある場合はブラウザ標準のundo/redoに任せる
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    e.preventDefault();
+    if (isUndo) performUndo();
+    else performRedo();
+  });
+
   // ---- 自動保存のデバウンス（パン・ズームなど連続発火するイベント用） ----
 
   let saveTimer = null;
@@ -36,7 +99,7 @@
     Model.select(node.id);
     View.selectNode(node.id);
     View.selectEdge(null);
-    IO.save();
+    commit();
   });
 
   ['rect', 'ellipse', 'diamond'].forEach(shape => {
@@ -46,7 +109,7 @@
       Model.select(node.id);
       View.selectNode(node.id);
       View.selectEdge(null);
-      IO.save();
+      commit();
     });
   });
 
@@ -66,7 +129,7 @@
         Model.select(node.id);
         View.selectNode(node.id);
         View.selectEdge(null);
-        IO.save();
+        commit();
       };
       img.src = src;
     };
@@ -139,7 +202,7 @@
       View.selectEdge(null);
       View.setViewport(data.viewport || { x: 0, y: 0, zoom: 1 });
       updateZoomLabel();
-      IO.save();
+      commit();
     });
     e.target.value = '';
   });
@@ -324,7 +387,7 @@
   }
 
   function onMouseUp() {
-    if (drag || resize) { IO.save(); drag = null; resize = null; }
+    if (drag || resize) { commit(); drag = null; resize = null; }
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
   }
@@ -386,7 +449,7 @@
         const edge = Model.addEdge(connectFrom, id);
         if (edge) {
           View.addEdge(edge);
-          IO.save();
+          commit();
         }
         setConnectMode(false);
       }
@@ -492,7 +555,7 @@
     editing = true;
     View.startEditing(nodeEl.dataset.id, content => {
       Model.updateContent(nodeEl.dataset.id, content);
-      IO.save();
+      commit(); // 内容が変わっていなければ History.push() 内の重複判定で履歴には積まれない
       editing = false;
     });
   });
@@ -554,6 +617,6 @@
     removed.edgeIds.forEach(id => View.removeEdge(id));
     View.selectNodes([]);
     View.selectEdge(null);
-    IO.save();
+    commit();
   });
 })();
