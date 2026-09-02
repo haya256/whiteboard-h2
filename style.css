@@ -63,6 +63,7 @@ html, body {
 }
 
 #btn-import { display: none; }
+#btn-image { display: none; }
 
 #btn-connector.active {
   background: #4a90e2 !important;
@@ -171,6 +172,21 @@ html, body {
 .shape-text[contenteditable="true"] {
   user-select: text;
   cursor: text;
+}
+
+/* ---- Image ---- */
+.image-el {
+  cursor: grab;
+  filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.14));
+}
+
+.image-frame {
+  pointer-events: none;
+}
+
+.node.selected .image-frame {
+  stroke: #4a90e2;
+  stroke-width: 2.5;
 }
 
 /* ---- Resize handles ---- */

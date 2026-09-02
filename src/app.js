@@ -33,6 +33,69 @@
     });
   });
 
+  // ---- 画像の追加（共通処理） ----
+
+  // File を読み込んで Base64 化し、自然サイズを取得した上でノードとして追加する。
+  // x, y を指定すると、その点を中心に配置する（ドロップ位置・ペースト位置用）。
+  function loadImageFile(file, x, y) {
+    if (!file || !file.type || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const src = e.target.result;
+      const img = new Image();
+      img.onload = () => {
+        const node = Model.addImage(src, img.naturalWidth, img.naturalHeight, x, y);
+        View.addNode(node);
+        Model.select(node.id);
+        View.selectNode(node.id);
+        View.selectEdge(null);
+        IO.save();
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  document.getElementById('btn-image').addEventListener('change', e => {
+    Array.from(e.target.files).forEach(file => loadImageFile(file));
+    e.target.value = '';
+  });
+
+  // ---- 画像のドラッグ&ドロップ ----
+
+  // dragover を preventDefault しないとブラウザがファイルを開いてしまう
+  document.addEventListener('dragover', e => e.preventDefault());
+
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    const files = e.dataTransfer?.files;
+    if (!files || !files.length) return;
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (!imageFiles.length) return;
+    const pt = View.svgPoint(e);
+    // 複数ファイルは少しずつ位置をずらして重なりを避ける
+    imageFiles.forEach((file, i) => loadImageFile(file, pt.x + i * 24, pt.y + i * 24));
+  });
+
+  // ---- 画像のペースト ----
+
+  document.addEventListener('paste', e => {
+    if (editing) return; // テキスト編集中はブラウザ標準のペーストに任せる
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files = Array.from(items)
+      .filter(it => it.type && it.type.startsWith('image/'))
+      .map(it => it.getAsFile())
+      .filter(Boolean);
+    if (!files.length) return;
+    e.preventDefault();
+    // キャンバス中央付近に配置する
+    const r = canvas.getBoundingClientRect();
+    const cx = r.width / 2;
+    const cy = r.height / 2;
+    files.forEach((file, i) => loadImageFile(file, cx + i * 24, cy + i * 24));
+  });
+
   // ---- コネクタ（接続モード） ----
 
   const btnConnector = document.getElementById('btn-connector');
@@ -72,8 +135,26 @@
 
   const MIN_SIZE = 40;
 
-  function calcResize(dir, dx, dy, oX, oY, oW, oH) {
+  function calcResize(dir, dx, dy, oX, oY, oW, oH, keepAspect) {
     let x = oX, y = oY, w = oW, h = oH;
+
+    // Shift 押下時（角ハンドルのみ）: 元の縦横比を保ったままリサイズする
+    if (keepAspect && dir.length === 2) {
+      const aspect = oW / oH;
+      let nw, nh;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        nw = dir.includes('w') ? oW - dx : oW + dx;
+        nw = Math.max(MIN_SIZE, nw);
+        nh = nw / aspect;
+      } else {
+        nh = dir.includes('n') ? oH - dy : oH + dy;
+        nh = Math.max(MIN_SIZE, nh);
+        nw = nh * aspect;
+      }
+      x = dir.includes('w') ? oX + oW - nw : oX;
+      y = dir.includes('n') ? oY + oH - nh : oY;
+      return { x, y, w: nw, h: nh };
+    }
 
     if (dir === 'nw' || dir === 'w' || dir === 'sw') {
       const nw = oW - dx;
@@ -101,7 +182,7 @@
     if (resize) {
       const dx = pt.x - resize.startX;
       const dy = pt.y - resize.startY;
-      const { x, y, w, h } = calcResize(resize.dir, dx, dy, resize.origX, resize.origY, resize.origW, resize.origH);
+      const { x, y, w, h } = calcResize(resize.dir, dx, dy, resize.origX, resize.origY, resize.origW, resize.origH, e.shiftKey);
       Model.updatePosition(resize.id, x, y);
       Model.updateSize(resize.id, w, h);
       View.moveNode(resize.id, x, y);
@@ -201,6 +282,10 @@
     if (connectMode) return;
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) return;
+
+    // 画像ノードはテキスト編集を持たないため対象外にする
+    const targetNode = Model.findById(nodeEl.dataset.id);
+    if (targetNode && targetNode.type === 'image') return;
 
     drag = null;
     resize = null;

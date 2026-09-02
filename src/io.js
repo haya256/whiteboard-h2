@@ -17,11 +17,19 @@ const IO = (() => {
     };
   }
 
+  // 容量超過の警告は連続して出さないよう、直前が成功したかどうかを覚えておく
+  let _quotaWarned = false;
+
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(buildData()));
+      _quotaWarned = false;
     } catch (e) {
       console.warn('自動保存に失敗しました:', e);
+      if (!_quotaWarned) {
+        _quotaWarned = true;
+        alert('画像が大きすぎて自動保存できません。.svg で保存してください');
+      }
     }
   }
 
@@ -50,6 +58,7 @@ const IO = (() => {
 
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('xmlns', SVG_NS);
+    svg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
     svg.setAttribute('viewBox', `${minX} ${minY} ${w} ${h}`);
     svg.setAttribute('width', w);
     svg.setAttribute('height', h);
@@ -183,6 +192,16 @@ const IO = (() => {
             g.appendChild(t);
           });
         }
+      } else if (node.type === 'image') {
+        const img = document.createElementNS(SVG_NS, 'image');
+        img.setAttribute('x', node.x);
+        img.setAttribute('y', node.y);
+        img.setAttribute('width', node.width);
+        img.setAttribute('height', node.height);
+        img.setAttribute('preserveAspectRatio', 'none');
+        img.setAttribute('href', node.src);
+        img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', node.src);
+        g.appendChild(img);
       }
 
       svg.appendChild(g);

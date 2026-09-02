@@ -154,6 +154,37 @@ const View = (() => {
     return g;
   }
 
+  // ---- 画像のSVG要素を生成 ----
+
+  function makeImageEl(node) {
+    const { width: w, height: h } = node;
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.classList.add('node', 'image');
+    g.dataset.id = node.id;
+    g.setAttribute('transform', `translate(${node.x},${node.y})`);
+
+    const img = document.createElementNS(SVG_NS, 'image');
+    img.classList.add('image-el');
+    img.setAttribute('width', w);
+    img.setAttribute('height', h);
+    img.setAttribute('preserveAspectRatio', 'none');
+    // href / xlink:href の両方をセットして古いビューアとの互換性を確保する
+    img.setAttribute('href', node.src);
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', node.src);
+    g.appendChild(img);
+
+    // 選択枠表示用（image要素は stroke が効かないので透明な矩形を重ねる）
+    const frame = document.createElementNS(SVG_NS, 'rect');
+    frame.classList.add('image-frame');
+    frame.setAttribute('width', w);
+    frame.setAttribute('height', h);
+    frame.setAttribute('fill', 'none');
+    g.appendChild(frame);
+
+    makeResizeHandles(w, h).forEach(el => g.appendChild(el));
+    return g;
+  }
+
   // ---- コネクタ（エッジ）のSVG要素を生成 ----
 
   function markerId(color) {
@@ -373,6 +404,7 @@ const View = (() => {
       nodes.forEach(n => {
         if (n.type === 'sticky') _canvas.appendChild(makeStickyEl(n));
         else if (n.type === 'shape') _canvas.appendChild(makeShapeEl(n));
+        else if (n.type === 'image') _canvas.appendChild(makeImageEl(n));
       });
       renderEdges(Model.getEdges());
       updateEmptyHint();
@@ -381,6 +413,7 @@ const View = (() => {
     addNode(node) {
       if (node.type === 'sticky') _canvas.appendChild(makeStickyEl(node));
       else if (node.type === 'shape') _canvas.appendChild(makeShapeEl(node));
+      else if (node.type === 'image') _canvas.appendChild(makeImageEl(node));
       updateEmptyHint();
     },
 
@@ -399,23 +432,32 @@ const View = (() => {
       const el = _canvas.querySelector(`[data-id="${id}"]`);
       if (!el) return;
       const node = Model.findById(id);
-      if (!node || node.type !== 'shape') return;
+      if (!node) return;
 
-      const bg = el.querySelector('.shape-bg');
-      if (node.shape === 'rect') {
-        bg.setAttribute('width', w);
-        bg.setAttribute('height', h);
-      } else if (node.shape === 'ellipse') {
-        bg.setAttribute('cx', w / 2);
-        bg.setAttribute('cy', h / 2);
-        bg.setAttribute('rx', w / 2);
-        bg.setAttribute('ry', h / 2);
+      if (node.type === 'shape') {
+        const bg = el.querySelector('.shape-bg');
+        if (node.shape === 'rect') {
+          bg.setAttribute('width', w);
+          bg.setAttribute('height', h);
+        } else if (node.shape === 'ellipse') {
+          bg.setAttribute('cx', w / 2);
+          bg.setAttribute('cy', h / 2);
+          bg.setAttribute('rx', w / 2);
+          bg.setAttribute('ry', h / 2);
+        } else {
+          bg.setAttribute('points', `${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}`);
+        }
+
+        const fo = el.querySelector('.shape-fo');
+        if (fo) { fo.setAttribute('width', w); fo.setAttribute('height', h); }
+      } else if (node.type === 'image') {
+        const img = el.querySelector('.image-el');
+        const frame = el.querySelector('.image-frame');
+        if (img) { img.setAttribute('width', w); img.setAttribute('height', h); }
+        if (frame) { frame.setAttribute('width', w); frame.setAttribute('height', h); }
       } else {
-        bg.setAttribute('points', `${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}`);
+        return; // 付箋はリサイズ非対応
       }
-
-      const fo = el.querySelector('.shape-fo');
-      if (fo) { fo.setAttribute('width', w); fo.setAttribute('height', h); }
 
       repositionHandles(el, w, h);
       updateEdgesFor(id);

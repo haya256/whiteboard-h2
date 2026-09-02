@@ -82,6 +82,31 @@ const Model = (() => {
       return node;
     },
 
+    // 画像ノードを追加する。naturalW/H は画像の自然サイズ。
+    // 縦横比を保ったまま最大 IMAGE_MAX_SIZE に収まるよう縮小する。
+    // x, y を指定した場合はその点を画像の中心として配置する（未指定なら他ノードと同様ランダム配置）。
+    addImage(src, naturalW, naturalH, x, y) {
+      const MAX = 400;
+      let w = naturalW || MAX;
+      let h = naturalH || MAX;
+      if (w > MAX || h > MAX) {
+        const scale = Math.min(MAX / w, MAX / h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const node = {
+        id: crypto.randomUUID(),
+        type: 'image',
+        x: x != null ? x - w / 2 : 80 + Math.random() * 320,
+        y: y != null ? y - h / 2 : 80 + Math.random() * 160,
+        width: w,
+        height: h,
+        src
+      };
+      _nodes.push(node);
+      return node;
+    },
+
     updatePosition(id, x, y) {
       const n = _nodes.find(n => n.id === id);
       if (n) { n.x = x; n.y = y; }
