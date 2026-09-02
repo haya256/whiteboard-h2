@@ -10,6 +10,23 @@
     Model.setEdges(saved.edges || []);
     View.renderAll(Model.getNodes());
   }
+  if (saved?.viewport) View.setViewport(saved.viewport);
+
+  // ---- 自動保存のデバウンス（パン・ズームなど連続発火するイベント用） ----
+
+  let saveTimer = null;
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => IO.save(), 300);
+  }
+
+  // ---- ズーム率表示 ----
+
+  const zoomLabel = document.getElementById('zoom-label');
+  function updateZoomLabel() {
+    zoomLabel.textContent = Math.round(View.getViewport().zoom * 100) + '%';
+  }
+  updateZoomLabel();
 
   // ---- ツールバー ----
 
@@ -89,11 +106,9 @@
       .filter(Boolean);
     if (!files.length) return;
     e.preventDefault();
-    // キャンバス中央付近に配置する
-    const r = canvas.getBoundingClientRect();
-    const cx = r.width / 2;
-    const cy = r.height / 2;
-    files.forEach((file, i) => loadImageFile(file, cx + i * 24, cy + i * 24));
+    // キャンバス中央付近（ワールド座標）に配置する
+    const center = View.canvasCenter();
+    files.forEach((file, i) => loadImageFile(file, center.x + i * 24, center.y + i * 24));
   });
 
   // ---- コネクタ（接続モード） ----
@@ -122,10 +137,112 @@
       View.renderAll(Model.getNodes());
       View.selectNode(null);
       View.selectEdge(null);
+      View.setViewport(data.viewport || { x: 0, y: 0, zoom: 1 });
+      updateZoomLabel();
       IO.save();
     });
     e.target.value = '';
   });
+
+  // ---- ズームリセット / 全体表示 ----
+
+  document.getElementById('btn-zoom-reset').addEventListener('click', () => {
+    View.setViewport({ x: 0, y: 0, zoom: 1 });
+    updateZoomLabel();
+    IO.save();
+  });
+
+  document.getElementById('btn-zoom-fit').addEventListener('click', () => {
+    const nodes = Model.getNodes();
+    const r = canvas.getBoundingClientRect();
+    if (!nodes.length) {
+      View.setViewport({ x: 0, y: 0, zoom: 1 });
+      updateZoomLabel();
+      IO.save();
+      return;
+    }
+    const PAD = 60;
+    const minX = Math.min(...nodes.map(n => n.x)) - PAD;
+    const minY = Math.min(...nodes.map(n => n.y)) - PAD;
+    const maxX = Math.max(...nodes.map(n => n.x + n.width)) + PAD;
+    const maxY = Math.max(...nodes.map(n => n.y + n.height)) + PAD;
+    const bw = maxX - minX;
+    const bh = maxY - minY;
+    let zoom = Math.min(r.width / bw, r.height / bh);
+    zoom = Math.min(5, Math.max(0.1, zoom));
+    const x = r.width / 2 - (minX + bw / 2) * zoom;
+    const y = r.height / 2 - (minY + bh / 2) * zoom;
+    View.setViewport({ x, y, zoom });
+    updateZoomLabel();
+    IO.save();
+  });
+
+  // ---- ホイールでズーム（カーソル位置を中心に拡大縮小） ----
+
+  const ZOOM_MIN = 0.1;
+  const ZOOM_MAX = 5;
+  const ZOOM_STEP = 1.1;
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const vp = View.getViewport();
+    const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+    const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, vp.zoom * factor));
+    if (newZoom === vp.zoom) return;
+
+    const r = canvas.getBoundingClientRect();
+    const sx = e.clientX - r.left;
+    const sy = e.clientY - r.top;
+    // ズーム前にカーソルがあったワールド座標を求め、ズーム後も同じ画面位置に来るよう
+    // translate (x, y) を再計算する
+    const wx = (sx - vp.x) / vp.zoom;
+    const wy = (sy - vp.y) / vp.zoom;
+    const x = sx - wx * newZoom;
+    const y = sy - wy * newZoom;
+
+    View.setViewport({ x, y, zoom: newZoom });
+    updateZoomLabel();
+    scheduleSave();
+  }, { passive: false });
+
+  // ---- パン（空白ドラッグ / Spaceキー押下中のドラッグ / 中ボタンドラッグ） ----
+
+  let pan = null;
+  let spacePressed = false;
+  const PAN_CLICK_THRESHOLD = 3; // これ未満の移動は「クリック」（選択解除）とみなす
+
+  function onPanMove(e) {
+    const dx = e.clientX - pan.startX;
+    const dy = e.clientY - pan.startY;
+    if (Math.abs(dx) > PAN_CLICK_THRESHOLD || Math.abs(dy) > PAN_CLICK_THRESHOLD) pan.moved = true;
+    View.setViewport({ x: pan.origX + dx, y: pan.origY + dy, zoom: pan.origZoom });
+  }
+
+  function onPanUp() {
+    if (pan && pan.deselectOnClick && !pan.moved) {
+      Model.select(null);
+      View.selectNode(null);
+      View.selectEdge(null);
+    }
+    if (pan && pan.moved) scheduleSave();
+    pan = null;
+    canvas.classList.remove('panning');
+    document.removeEventListener('mousemove', onPanMove);
+    document.removeEventListener('mouseup', onPanUp);
+  }
+
+  function startPan(e, deselectOnClick) {
+    e.preventDefault();
+    const vp = View.getViewport();
+    pan = {
+      startX: e.clientX, startY: e.clientY,
+      origX: vp.x, origY: vp.y, origZoom: vp.zoom,
+      moved: false, deselectOnClick: !!deselectOnClick
+    };
+    canvas.classList.add('panning');
+    document.addEventListener('mousemove', onPanMove);
+    document.addEventListener('mouseup', onPanUp);
+  }
 
   // ---- ドラッグ & リサイズ ----
 
@@ -225,6 +342,12 @@
       return;
     }
 
+    // ---- パン：中ボタン、または Space キー押下中は対象を問わずドラッグでパンする ----
+    if (e.button === 1 || spacePressed) {
+      startPan(e, false);
+      return;
+    }
+
     const handleEl = e.target.closest('.resize-handle');
     if (handleEl) {
       e.preventDefault();
@@ -256,9 +379,9 @@
 
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) {
-      Model.select(null);
-      View.selectNode(null);
-      View.selectEdge(null);
+      // 空白ドラッグ：そのままパン候補として開始する。
+      // 移動量がほぼ0のままマウスアップした場合のみ「クリックで選択解除」を行う（従来の挙動を維持）。
+      startPan(e, true);
       return;
     }
 
@@ -298,6 +421,23 @@
       IO.save();
       editing = false;
     });
+  });
+
+  // ---- Space キー押下中はパン待機状態にする ----
+
+  document.addEventListener('keydown', e => {
+    if (e.code !== 'Space' || spacePressed || editing) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    spacePressed = true;
+    canvas.classList.add('pan-ready');
+    e.preventDefault(); // ページスクロールを防ぐ
+  });
+
+  document.addEventListener('keyup', e => {
+    if (e.code !== 'Space') return;
+    spacePressed = false;
+    canvas.classList.remove('pan-ready');
   });
 
   // ---- Delete / Backspace キーで削除 ----

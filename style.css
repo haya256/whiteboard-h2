@@ -70,6 +70,15 @@ html, body {
   color: #fff !important;
 }
 
+#zoom-label {
+  min-width: 44px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #a9b1d6;
+  user-select: none;
+}
+
 /* ---- Canvas ---- */
 #canvas {
   position: fixed;
@@ -83,6 +92,15 @@ html, body {
 
 #canvas.connecting {
   cursor: crosshair;
+}
+
+/* Spaceキー押下中はパン待機カーソル、実際にドラッグ中はグラブ中カーソル */
+#canvas.pan-ready {
+  cursor: grab;
+}
+
+#canvas.panning {
+  cursor: grabbing;
 }
 
 /* ---- Empty state ---- */
@@ -195,6 +213,12 @@ html, body {
   fill: #fff;
   stroke: #4a90e2;
   stroke-width: 1.5;
+}
+
+/* ズームで拡大縮小されてもストローク（線）幅は画面上一定に保つ。
+   ハンドル自体の大きさや選択枠の太さがズームで変わるのは許容する。 */
+.sticky-bg, .shape-bg, .image-frame, .resize-handle, .edge-line, .edge-hit {
+  vector-effect: non-scaling-stroke;
 }
 
 .node.selected .resize-handle {

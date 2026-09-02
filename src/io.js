@@ -11,7 +11,7 @@ const IO = (() => {
         title: 'ボード',
         modified: new Date().toISOString()
       },
-      viewport: { x: 0, y: 0, zoom: 1.0 },
+      viewport: View.getViewport(),
       nodes: Model.getNodes(),
       edges: Model.getEdges()
     };

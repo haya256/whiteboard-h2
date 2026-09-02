@@ -4,6 +4,18 @@ const View = (() => {
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const XHTML_NS = 'http://www.w3.org/1999/xhtml';
   let _canvas;
+  let _viewport; // <g id="viewport"> パン・ズーム対象レイヤー（ノード・コネクタをまとめる）
+  let _vp = { x: 0, y: 0, zoom: 1 }; // 現在のビューポート状態
+
+  // ビューポートのtransform属性を現在の状態から再設定する
+  function applyViewportTransform() {
+    _viewport.setAttribute('transform', `translate(${_vp.x},${_vp.y}) scale(${_vp.zoom})`);
+  }
+
+  // 画面座標（キャンバス左上からのpx）をワールド座標（ビューポート変換前）に変換する
+  function toWorld(sx, sy) {
+    return { x: (sx - _vp.x) / _vp.zoom, y: (sy - _vp.y) / _vp.zoom };
+  }
 
   // ---- テキストのDOM操作 ----
 
@@ -386,34 +398,60 @@ const View = (() => {
       bg.style.pointerEvents = 'none';
       _canvas.appendChild(bg);
 
+      // ビューポート層：パン・ズームの対象となる描画要素（コネクタ・ノード）をまとめて入れる。
+      // 背景の点グリッドと空状態ヒントはこの外＝画面固定のまま表示する。
+      _viewport = document.createElementNS(SVG_NS, 'g');
+      _viewport.id = 'viewport';
+      _canvas.appendChild(_viewport);
+      applyViewportTransform();
+
       // コネクタ描画用レイヤー。ノードより先に追加しておくことで常に下に描画される
       const edgesLayer = document.createElementNS(SVG_NS, 'g');
       edgesLayer.id = 'edges-layer';
-      _canvas.appendChild(edgesLayer);
+      _viewport.appendChild(edgesLayer);
 
       _canvas.appendChild(makeEmptyHint());
     },
 
     svgPoint(e) {
       const r = _canvas.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
+      return toWorld(e.clientX - r.left, e.clientY - r.top);
+    },
+
+    // 現在キャンバスの中央に表示されているワールド座標を返す（ペースト位置決め用）
+    canvasCenter() {
+      const r = _canvas.getBoundingClientRect();
+      return toWorld(r.width / 2, r.height / 2);
+    },
+
+    getViewport() {
+      return { x: _vp.x, y: _vp.y, zoom: _vp.zoom };
+    },
+
+    setViewport(vp) {
+      _vp = {
+        x: typeof vp.x === 'number' ? vp.x : 0,
+        y: typeof vp.y === 'number' ? vp.y : 0,
+        zoom: typeof vp.zoom === 'number' && vp.zoom > 0 ? vp.zoom : 1
+      };
+      applyViewportTransform();
     },
 
     renderAll(nodes) {
       _canvas.querySelectorAll('.node').forEach(el => el.remove());
       nodes.forEach(n => {
-        if (n.type === 'sticky') _canvas.appendChild(makeStickyEl(n));
-        else if (n.type === 'shape') _canvas.appendChild(makeShapeEl(n));
-        else if (n.type === 'image') _canvas.appendChild(makeImageEl(n));
+        if (n.type === 'sticky') _viewport.appendChild(makeStickyEl(n));
+        else if (n.type === 'shape') _viewport.appendChild(makeShapeEl(n));
+        else if (n.type === 'image') _viewport.appendChild(makeImageEl(n));
       });
       renderEdges(Model.getEdges());
       updateEmptyHint();
     },
 
     addNode(node) {
-      if (node.type === 'sticky') _canvas.appendChild(makeStickyEl(node));
-      else if (node.type === 'shape') _canvas.appendChild(makeShapeEl(node));
-      else if (node.type === 'image') _canvas.appendChild(makeImageEl(node));
+      if (node.type === 'sticky') _viewport.appendChild(makeStickyEl(node));
+      else if (node.type === 'shape') _viewport.appendChild(makeShapeEl(node));
+      else if (node.type === 'image') _viewport.appendChild(makeImageEl(node));
       updateEmptyHint();
     },
 
