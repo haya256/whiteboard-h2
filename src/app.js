@@ -485,6 +485,7 @@
 
   let pan = null;
   let spacePressed = false;
+  let suppressContextMenu = false; // 右ボタンドラッグでパンした直後の contextmenu を抑止する
   const PAN_CLICK_THRESHOLD = 3; // これ未満の移動は「クリック」（選択解除）とみなす
 
   function onPanMove(e) {
@@ -501,6 +502,8 @@
       View.selectEdge(null);
     }
     if (pan && pan.moved) scheduleSave();
+    // 右ボタンドラッグでパンした場合は、mouseup 直後に発火する contextmenu を抑止する
+    if (pan && pan.button === 2 && pan.moved) suppressContextMenu = true;
     pan = null;
     canvas.classList.remove('panning');
     document.removeEventListener('mousemove', onPanMove);
@@ -513,7 +516,8 @@
     pan = {
       startX: e.clientX, startY: e.clientY,
       origX: vp.x, origY: vp.y, origZoom: vp.zoom,
-      moved: false, deselectOnClick: !!deselectOnClick
+      moved: false, deselectOnClick: !!deselectOnClick,
+      button: e.button
     };
     canvas.classList.add('panning');
     document.addEventListener('mousemove', onPanMove);
@@ -661,6 +665,12 @@
 
   canvas.addEventListener('mousedown', e => {
     if (editing) return;
+
+    // ---- 右ボタンドラッグ：対象を問わずキャンバスのパンのみ（選択・移動はしない） ----
+    if (e.button === 2) {
+      startPan(e, false);
+      return;
+    }
 
     // ---- 接続モード中：ドラッグやリサイズは発生させず、ノードクリックのみ処理 ----
     if (connectMode) {
@@ -957,6 +967,8 @@
     // テキスト編集中はブラウザ標準の右クリックメニュー（コピー/ペースト等）に任せる
     if (editing) return;
     e.preventDefault();
+    // 右ボタンドラッグ（パン）の直後はメニューを出さない
+    if (suppressContextMenu) { suppressContextMenu = false; return; }
     closeLinkPopover();
     if (connectMode) return;
 
