@@ -617,8 +617,9 @@
   // ---- Delete / Backspace キーで削除 ----
 
   document.addEventListener('keydown', e => {
-    // Esc：接続モード中はそちらを優先して解除。それ以外は選択解除
+    // Esc：右クリックメニュー表示中はそれを閉じる。次に接続モード中はそちらを優先して解除。それ以外は選択解除
     if (e.key === 'Escape') {
+      if (contextMenu.classList.contains('open')) { hideContextMenu(); return; }
       if (connectMode) { setConnectMode(false); return; }
       if (!editing) {
         Model.clearSelection();
@@ -647,6 +648,12 @@
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
     e.preventDefault();
+    deleteSelected();
+  });
+
+  // ---- 選択中のノード/エッジを削除する（Deleteキー・右クリックメニュー共通処理） ----
+
+  function deleteSelected() {
     const removed = Model.removeSelected();
     if (!removed) return;
 
@@ -655,5 +662,90 @@
     View.selectNodes([]);
     View.selectEdge(null);
     commit();
+  }
+
+  // ---- 重なり順（Z順）の変更 ----
+  // Model.bringToFront/sendToBack/bringForward/sendBackward はいずれも
+  // 配列順（= 重なり順）を書き換えて変化の有無（true/false）を返す。
+  // 変化があった場合のみ View 側の並べ替えと commit（履歴・保存）を行う。
+
+  function reorderSelection(action) {
+    const ids = Model.getSelectedIds();
+    if (!ids.length) return;
+    const changed = Model[action](ids);
+    if (changed) {
+      View.reorderNodes(Model.getNodes());
+      commit();
+    }
+  }
+
+  // キーボード：Ctrl/Cmd+] 前面へ、Ctrl/Cmd+[ 背面へ、Shift併用で最前面/最背面へ。
+  // 日本語キーボードでも動作するよう e.code（物理キー）と e.key（文字。Shift併用時は } / { になる）の両方を見る。
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (editing || connectMode) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    const isRight = e.code === 'BracketRight' || e.key === ']' || e.key === '}';
+    const isLeft = e.code === 'BracketLeft' || e.key === '[' || e.key === '{';
+    if (!isRight && !isLeft) return;
+
+    e.preventDefault();
+    if (isRight) reorderSelection(e.shiftKey ? 'bringToFront' : 'bringForward');
+    else reorderSelection(e.shiftKey ? 'sendToBack' : 'sendBackward');
   });
+
+  // ---- 右クリックメニュー（重なり順の変更・削除） ----
+
+  const contextMenu = document.getElementById('context-menu');
+
+  function hideContextMenu() {
+    contextMenu.classList.remove('open');
+  }
+
+  function showContextMenu(x, y) {
+    contextMenu.style.left = x + 'px';
+    contextMenu.style.top = y + 'px';
+    contextMenu.classList.add('open');
+  }
+
+  canvas.addEventListener('contextmenu', e => {
+    // テキスト編集中はブラウザ標準の右クリックメニュー（コピー/ペースト等）に任せる
+    if (editing) return;
+    e.preventDefault();
+    if (connectMode) return;
+
+    const nodeEl = e.target.closest('.node');
+    if (!nodeEl) { hideContextMenu(); return; } // 空白の右クリックはブラウザ標準メニューを抑止するのみ
+
+    const id = nodeEl.dataset.id;
+    // 右クリックしたノードが未選択なら、そのノードのみ選択してからメニューを出す。
+    // 既に選択中（複数選択の一部含む）ならそのまま選択状態を維持する。
+    if (!Model.isSelected(id)) {
+      Model.select(id);
+      View.selectNodes(Model.getSelectedIds());
+      View.selectEdge(null);
+    }
+    showContextMenu(e.clientX, e.clientY);
+  });
+
+  contextMenu.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    hideContextMenu();
+
+    if (action === 'delete') { deleteSelected(); return; }
+
+    const ACTION_MAP = { front: 'bringToFront', forward: 'bringForward', backward: 'sendBackward', back: 'sendToBack' };
+    reorderSelection(ACTION_MAP[action]);
+  });
+
+  // メニュー外クリック・スクロール・ホイールズームで閉じる
+  document.addEventListener('mousedown', e => {
+    if (contextMenu.classList.contains('open') && !contextMenu.contains(e.target)) hideContextMenu();
+  });
+  document.addEventListener('scroll', hideContextMenu, true);
+  canvas.addEventListener('wheel', hideContextMenu);
 })();

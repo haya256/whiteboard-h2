@@ -32,6 +32,16 @@
   </div>
   <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
 
+  <!-- 右クリックメニュー（重なり順の変更・削除） -->
+  <div id="context-menu">
+    <button data-action="front">最前面へ移動</button>
+    <button data-action="forward">前面へ移動</button>
+    <button data-action="backward">背面へ移動</button>
+    <button data-action="back">最背面へ移動</button>
+    <div class="context-menu-sep"></div>
+    <button data-action="delete">削除</button>
+  </div>
+
   <script src="src/model.js"></script>
   <script src="src/view.js"></script>
   <script src="src/io.js"></script>

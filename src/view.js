@@ -487,6 +487,16 @@ const View = (() => {
       updateEmptyHint();
     },
 
+    // Model の配列順（= 重なり順）に合わせて、既存のノード<g>要素をDOM上で並べ替える。
+    // 全再描画はせず appendChild で順序だけ変更するため、選択状態やハンドル表示はそのまま維持される。
+    // （appendChildは既存要素であればDOM内の元の位置から末尾へ移動する仕様を利用している）
+    reorderNodes(nodes) {
+      nodes.forEach(n => {
+        const el = _canvas.querySelector(`[data-id="${n.id}"]`);
+        if (el) _viewport.appendChild(el);
+      });
+    },
+
     addNode(node) {
       if (node.type === 'sticky') _viewport.appendChild(makeStickyEl(node));
       else if (node.type === 'shape') _viewport.appendChild(makeShapeEl(node));

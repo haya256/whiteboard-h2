@@ -12,6 +12,41 @@ const Model = (() => {
   let _selectedEdgeId = null;
   let _colorIdx = 0;
 
+  // ---- 重なり順（Z順）ヘルパー ----
+  // 重なり順は _nodes の配列順そのもので表現する（末尾＝最前面、先頭＝最背面）。
+  // z フィールドは持たせず、配列順が保存・復元される。
+
+  // 2つのノード配列がID順まで完全一致するか（変化なし判定用）
+  function sameOrder(a, b) {
+    if (a.length !== b.length) return false;
+    return a.every((n, i) => n.id === b[i].id);
+  }
+
+  // 選択ノード（ids）を dir 方向へ1段ずつ動かす。
+  // 各選択ノードは、移動方向に隣接する「非選択」ノードとだけ swap する
+  // （隣が選択ノードなら飛び越えない＝選択ノード同士の相対順序は保たれる）。
+  // dir = +1 で前面へ（配列の末尾側）、dir = -1 で背面へ（配列の先頭側）。
+  function stepReorder(ids, dir) {
+    const idSet = new Set(ids || []);
+    if (idSet.size === 0) return false;
+
+    const indices = [];
+    _nodes.forEach((n, i) => { if (idSet.has(n.id)) indices.push(i); });
+    if (indices.length === 0) return false;
+    // 前面側から順に処理することで、隣り合う選択ノード同士が互いを追い越さずまとまって動く
+    if (dir > 0) indices.reverse();
+
+    let changed = false;
+    indices.forEach(i => {
+      const j = i + dir;
+      if (j < 0 || j >= _nodes.length) return; // 配列の端＝これ以上動けない
+      if (idSet.has(_nodes[j].id)) return; // 隣も選択ノードなら飛び越えない
+      const tmp = _nodes[i]; _nodes[i] = _nodes[j]; _nodes[j] = tmp;
+      changed = true;
+    });
+    return changed;
+  }
+
   return {
     getNodes: () => _nodes,
     getEdges: () => _edges,
@@ -180,6 +215,46 @@ const Model = (() => {
       });
       _selectedIds.delete(id);
       return { type: 'node', nodeIds: [id], edgeIds };
+    },
+
+    // ---- 重なり順（Z順）の変更 ----
+    // いずれも ids（配列）を受け取り、選択ノード同士の相対順序を維持したまま並べ替える。
+    // 変化があれば true、既に最前面/最背面などで変化がなければ false を返す。
+
+    // 選択ノードをまとめて最前面（配列の末尾）へ移動する
+    bringToFront(ids) {
+      const idSet = new Set(ids || []);
+      if (idSet.size === 0) return false;
+      const selected = _nodes.filter(n => idSet.has(n.id));
+      if (selected.length === 0) return false;
+      const rest = _nodes.filter(n => !idSet.has(n.id));
+      const newOrder = rest.concat(selected);
+      if (sameOrder(newOrder, _nodes)) return false;
+      _nodes = newOrder;
+      return true;
+    },
+
+    // 選択ノードをまとめて最背面（配列の先頭）へ移動する
+    sendToBack(ids) {
+      const idSet = new Set(ids || []);
+      if (idSet.size === 0) return false;
+      const selected = _nodes.filter(n => idSet.has(n.id));
+      if (selected.length === 0) return false;
+      const rest = _nodes.filter(n => !idSet.has(n.id));
+      const newOrder = selected.concat(rest);
+      if (sameOrder(newOrder, _nodes)) return false;
+      _nodes = newOrder;
+      return true;
+    },
+
+    // 選択ノードを1段前面へ（直近の非選択ノードを1つ飛び越える）
+    bringForward(ids) {
+      return stepReorder(ids, 1);
+    },
+
+    // 選択ノードを1段背面へ（直近の非選択ノードを1つ飛び越える）
+    sendBackward(ids) {
+      return stepReorder(ids, -1);
     },
 
     // ---- コネクタ（エッジ） ----
