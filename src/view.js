@@ -166,6 +166,41 @@ const View = (() => {
     return g;
   }
 
+  // ---- テキストノードのSVG要素を生成（背景・枠なし） ----
+
+  function makeTextEl(node) {
+    const { width: w, height: h } = node;
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.classList.add('node', 'text-node');
+    g.dataset.id = node.id;
+    g.setAttribute('transform', `translate(${node.x},${node.y})`);
+
+    // 背景・枠を持たないため、選択枠・ホバー枠の表示とドラッグ当たり判定を兼ねた透明な矩形を敷く
+    const frame = document.createElementNS(SVG_NS, 'rect');
+    frame.classList.add('text-frame');
+    frame.setAttribute('width', w);
+    frame.setAttribute('height', h);
+    frame.setAttribute('fill', 'transparent');
+    g.appendChild(frame);
+
+    const fo = document.createElementNS(SVG_NS, 'foreignObject');
+    fo.classList.add('text-fo');
+    fo.setAttribute('width', w);
+    fo.setAttribute('height', h);
+
+    const div = document.createElementNS(XHTML_NS, 'div');
+    div.className = 'text-content';
+    div.style.fontSize = node.style.fontSize + 'px';
+    div.style.color = node.style.color;
+    setTextContent(div, node.content);
+
+    fo.appendChild(div);
+    g.appendChild(fo);
+
+    makeResizeHandles(w, h).forEach(el => g.appendChild(el));
+    return g;
+  }
+
   // ---- 画像のSVG要素を生成 ----
 
   function makeImageEl(node) {
@@ -340,9 +375,12 @@ const View = (() => {
     sel.addRange(range);
 
     const finish = () => {
+      // contentEditable を外す前に scrollHeight を測っておく（テキストノードの高さ自動調整用）
+      const text = getTextContent(div);
+      const scrollHeight = div.scrollHeight;
       div.contentEditable = 'false';
       fo.style.pointerEvents = 'none';
-      onSave(getTextContent(div));
+      onSave(text, scrollHeight);
       div.removeEventListener('blur', finish);
       div.removeEventListener('keydown', onKey);
     };
@@ -443,6 +481,7 @@ const View = (() => {
         if (n.type === 'sticky') _viewport.appendChild(makeStickyEl(n));
         else if (n.type === 'shape') _viewport.appendChild(makeShapeEl(n));
         else if (n.type === 'image') _viewport.appendChild(makeImageEl(n));
+        else if (n.type === 'text') _viewport.appendChild(makeTextEl(n));
       });
       renderEdges(Model.getEdges());
       updateEmptyHint();
@@ -452,6 +491,7 @@ const View = (() => {
       if (node.type === 'sticky') _viewport.appendChild(makeStickyEl(node));
       else if (node.type === 'shape') _viewport.appendChild(makeShapeEl(node));
       else if (node.type === 'image') _viewport.appendChild(makeImageEl(node));
+      else if (node.type === 'text') _viewport.appendChild(makeTextEl(node));
       updateEmptyHint();
     },
 
@@ -493,6 +533,11 @@ const View = (() => {
         const frame = el.querySelector('.image-frame');
         if (img) { img.setAttribute('width', w); img.setAttribute('height', h); }
         if (frame) { frame.setAttribute('width', w); frame.setAttribute('height', h); }
+      } else if (node.type === 'text') {
+        const frame = el.querySelector('.text-frame');
+        const fo = el.querySelector('.text-fo');
+        if (frame) { frame.setAttribute('width', w); frame.setAttribute('height', h); }
+        if (fo) { fo.setAttribute('width', w); fo.setAttribute('height', h); }
       } else {
         return; // 付箋はリサイズ非対応
       }
@@ -566,8 +611,8 @@ const View = (() => {
     startEditing(id, onSave) {
       const el = _canvas.querySelector(`[data-id="${id}"]`);
       if (!el) return;
-      const fo = el.querySelector('.sticky-fo') || el.querySelector('.shape-fo');
-      const div = el.querySelector('.sticky-text') || el.querySelector('.shape-text');
+      const fo = el.querySelector('.sticky-fo') || el.querySelector('.shape-fo') || el.querySelector('.text-fo');
+      const div = el.querySelector('.sticky-text') || el.querySelector('.shape-text') || el.querySelector('.text-content');
       if (!fo || !div) return;
       startEditingEl(fo, div, onSave);
     }

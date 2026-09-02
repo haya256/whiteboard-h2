@@ -113,6 +113,20 @@
     });
   });
 
+  // ---- テキストノードの追加 ----
+  // 背景・枠のない空のテキストノードは見えないため、追加直後にそのまま編集モードへ入る。
+  // 履歴・保存への反映は編集確定（finishNodeEdit → commit）まで行わない
+  // （キャンセルされた場合に空ノードの痕跡を履歴に残さないため）。
+  document.getElementById('btn-add-text').addEventListener('click', () => {
+    const node = Model.addText();
+    View.addNode(node);
+    Model.select(node.id);
+    View.selectNode(node.id);
+    View.selectEdge(null);
+    editing = true;
+    View.startEditing(node.id, (content, scrollHeight) => finishNodeEdit(node.id, content, scrollHeight));
+  });
+
   // ---- 画像の追加（共通処理） ----
 
   // File を読み込んで Base64 化し、自然サイズを取得した上でノードとして追加する。
@@ -536,6 +550,32 @@
     document.addEventListener('mouseup', onMouseUp);
   });
 
+  // ---- テキスト編集の確定処理（sticky / shape / text 共通） ----
+
+  // テキストノードのみ特別扱い：内容が空なら残さず削除し、
+  // 内容が入力欄の高さを超えていれば高さを自動で伸ばす。
+  function finishNodeEdit(id, content, scrollHeight) {
+    const node = Model.findById(id);
+    if (node && node.type === 'text' && content.trim() === '') {
+      // 空のテキストノードは残さない
+      const removed = Model.removeNode(id);
+      if (removed) {
+        removed.nodeIds.forEach(nid => View.removeNode(nid));
+        removed.edgeIds.forEach(eid => View.removeEdge(eid));
+        View.selectNodes([]);
+        View.selectEdge(null);
+      }
+    } else {
+      Model.updateContent(id, content);
+      if (node && node.type === 'text' && scrollHeight && scrollHeight > node.height) {
+        Model.updateSize(id, node.width, scrollHeight);
+        View.resizeNode(id, node.width, node.height);
+      }
+    }
+    commit(); // 内容が変わっていなければ History.push() 内の重複判定で履歴には積まれない
+    editing = false;
+  }
+
   // ---- ダブルクリックでテキスト編集 ----
 
   canvas.addEventListener('dblclick', e => {
@@ -553,11 +593,8 @@
     document.removeEventListener('mouseup', onMouseUp);
 
     editing = true;
-    View.startEditing(nodeEl.dataset.id, content => {
-      Model.updateContent(nodeEl.dataset.id, content);
-      commit(); // 内容が変わっていなければ History.push() 内の重複判定で履歴には積まれない
-      editing = false;
-    });
+    const id = nodeEl.dataset.id;
+    View.startEditing(id, (content, scrollHeight) => finishNodeEdit(id, content, scrollHeight));
   });
 
   // ---- Space キー押下中はパン待機状態にする ----

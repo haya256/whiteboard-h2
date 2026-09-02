@@ -85,6 +85,26 @@ const Model = (() => {
       return node;
     },
 
+    // 背景・枠のないテキストのみのノードを追加する。
+    // x, y を指定した場合はその点を配置座標とする（未指定なら addSticky と同じランダム配置）。
+    addText(x, y) {
+      const node = {
+        id: crypto.randomUUID(),
+        type: 'text',
+        x: x != null ? x : 80 + Math.random() * 320,
+        y: y != null ? y : 80 + Math.random() * 160,
+        width: 240,
+        height: 40,
+        content: '',
+        style: {
+          fontSize: 18,
+          color: '#333333'
+        }
+      };
+      _nodes.push(node);
+      return node;
+    },
+
     addShape(shape) {
       const node = {
         id: crypto.randomUUID(),
@@ -144,6 +164,22 @@ const Model = (() => {
     updateContent(id, content) {
       const n = _nodes.find(n => n.id === id);
       if (n) n.content = content;
+    },
+
+    // 指定IDのノード1件を削除する（選択状態には影響しない）。
+    // 空のテキストノードを編集確定時に自動削除する用途などで使う。
+    // 戻り値は removeSelected と同じ形（{ type, nodeIds, edgeIds }）。見つからなければ null。
+    removeNode(id) {
+      const idx = _nodes.findIndex(n => n.id === id);
+      if (idx === -1) return null;
+      _nodes.splice(idx, 1);
+      const edgeIds = [];
+      _edges = _edges.filter(e => {
+        if (e.from === id || e.to === id) { edgeIds.push(e.id); return false; }
+        return true;
+      });
+      _selectedIds.delete(id);
+      return { type: 'node', nodeIds: [id], edgeIds };
     },
 
     // ---- コネクタ（エッジ） ----

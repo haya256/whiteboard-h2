@@ -192,6 +192,21 @@ const IO = (() => {
             g.appendChild(t);
           });
         }
+      } else if (node.type === 'text') {
+        // 背景・枠なし。左上寄せで折り返し済みの行をそのまま出力する
+        const lines = node.content ? node.content.split('\n') : [''];
+        const lineH = node.style.fontSize * 1.4;
+        const padTop = 4, padLeft = 6;
+        lines.forEach((line, i) => {
+          const t = document.createElementNS(SVG_NS, 'text');
+          t.setAttribute('x', node.x + padLeft);
+          t.setAttribute('y', node.y + padTop + node.style.fontSize * 0.9 + i * lineH);
+          t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
+          t.setAttribute('font-size', node.style.fontSize);
+          t.setAttribute('fill', node.style.color);
+          t.textContent = line;
+          g.appendChild(t);
+        });
       } else if (node.type === 'image') {
         const img = document.createElementNS(SVG_NS, 'image');
         img.setAttribute('x', node.x);

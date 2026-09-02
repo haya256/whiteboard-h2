@@ -219,6 +219,52 @@ html, body {
   stroke-width: 2.5;
 }
 
+/* ---- Text node（背景・枠なしテキスト） ---- */
+.text-frame {
+  fill: transparent; /* 背景は見せないが、クリック・ドラッグの当たり判定として必要 */
+  cursor: grab;
+  stroke: transparent;
+  stroke-width: 1;
+}
+
+/* 非選択時：ホバー中だけ薄い破線枠を出して位置がわかるようにする */
+.node.text-node:hover .text-frame {
+  stroke: #999;
+  stroke-dasharray: 4 3;
+}
+
+/* 選択時：他ノードと同じ選択枠を表示する（ホバーの破線より優先） */
+.node.selected .text-frame {
+  stroke: #4a90e2 !important;
+  stroke-width: 2;
+  stroke-dasharray: none !important;
+}
+
+.text-fo {
+  pointer-events: none;
+  overflow: visible;
+}
+
+.text-content {
+  width: 100%;
+  height: 100%;
+  padding: 4px 6px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.4;
+  text-align: left;
+  word-break: break-word;
+  outline: none;
+  overflow: hidden;
+  cursor: inherit;
+  user-select: none;
+}
+
+.text-content[contenteditable="true"] {
+  user-select: text;
+  cursor: text;
+  overflow: auto;
+}
+
 /* ---- Resize handles ---- */
 .resize-handle {
   display: none;
@@ -229,7 +275,7 @@ html, body {
 
 /* ズームで拡大縮小されてもストローク（線）幅は画面上一定に保つ。
    ハンドル自体の大きさや選択枠の太さがズームで変わるのは許容する。 */
-.sticky-bg, .shape-bg, .image-frame, .resize-handle, .edge-line, .edge-hit {
+.sticky-bg, .shape-bg, .image-frame, .text-frame, .resize-handle, .edge-line, .edge-hit {
   vector-effect: non-scaling-stroke;
 }
 
