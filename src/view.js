@@ -79,6 +79,24 @@ const View = (() => {
     });
   }
 
+  // ---- リンクアイコン（ノード右上の小さなマーク） ----
+  // node.link が設定されているノードにだけ表示する。位置はノード幅に応じて右寄せする。
+
+  function makeLinkBadge(node) {
+    const el = document.createElementNS(SVG_NS, 'text');
+    el.classList.add('link-badge');
+    el.setAttribute('text-anchor', 'end');
+    el.setAttribute('x', node.width - 6);
+    el.setAttribute('y', 15);
+    el.textContent = '🔗';
+    return el;
+  }
+
+  // 生成済みの<g>要素にリンクバッジが必要なら付与する（各 make*El 共通処理）
+  function appendLinkBadgeIfNeeded(g, node) {
+    if (node.link) g.appendChild(makeLinkBadge(node));
+  }
+
   // ---- 付箋のSVG要素を生成 ----
 
   function makeStickyEl(node) {
@@ -106,6 +124,7 @@ const View = (() => {
     fo.appendChild(div);
     g.appendChild(rect);
     g.appendChild(fo);
+    appendLinkBadgeIfNeeded(g, node);
     return g;
   }
 
@@ -163,6 +182,7 @@ const View = (() => {
     g.appendChild(fo);
 
     makeResizeHandles(w, h).forEach(el => g.appendChild(el));
+    appendLinkBadgeIfNeeded(g, node);
     return g;
   }
 
@@ -198,6 +218,7 @@ const View = (() => {
     g.appendChild(fo);
 
     makeResizeHandles(w, h).forEach(el => g.appendChild(el));
+    appendLinkBadgeIfNeeded(g, node);
     return g;
   }
 
@@ -229,6 +250,7 @@ const View = (() => {
     g.appendChild(frame);
 
     makeResizeHandles(w, h).forEach(el => g.appendChild(el));
+    appendLinkBadgeIfNeeded(g, node);
     return g;
   }
 
@@ -462,6 +484,12 @@ const View = (() => {
       return toWorld(r.width / 2, r.height / 2);
     },
 
+    // ワールド座標を画面座標（clientX/clientY基準。position:fixed要素の配置に使う）に変換する
+    worldToScreen(x, y) {
+      const r = _canvas.getBoundingClientRect();
+      return { x: r.left + x * _vp.zoom + _vp.x, y: r.top + y * _vp.zoom + _vp.y };
+    },
+
     getViewport() {
       return { x: _vp.x, y: _vp.y, zoom: _vp.zoom };
     },
@@ -521,6 +549,10 @@ const View = (() => {
       if (!el) return;
       const node = Model.findById(id);
       if (!node) return;
+
+      // リンクバッジは幅に応じて右寄せしているため、リサイズのたびに位置を合わせ直す
+      const badge = el.querySelector('.link-badge');
+      if (badge) badge.setAttribute('x', w - 6);
 
       if (node.type === 'shape') {
         const bg = el.querySelector('.shape-bg');
@@ -616,6 +648,20 @@ const View = (() => {
 
     updateEdgesFor(id) {
       updateEdgesFor(id);
+    },
+
+    // node.link の有無に合わせてリンクバッジ（右上の🔗マーク）を追加/更新/削除する
+    updateLinkBadge(node) {
+      if (!node) return;
+      const el = _canvas.querySelector(`[data-id="${node.id}"]`);
+      if (!el) return;
+      let badge = el.querySelector('.link-badge');
+      if (node.link) {
+        if (!badge) el.appendChild(makeLinkBadge(node));
+        else badge.setAttribute('x', node.width - 6);
+      } else if (badge) {
+        badge.remove();
+      }
     },
 
     startEditing(id, onSave) {

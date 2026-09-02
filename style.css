@@ -284,6 +284,13 @@ html, body {
   display: block;
 }
 
+/* ---- リンクバッジ（ノード右上の🔗マーク） ---- */
+.link-badge {
+  font-size: 13px;
+  pointer-events: none; /* クリックはノード本体に通す */
+  user-select: none;
+}
+
 /* ---- 矩形選択（ラバーバンド） ---- */
 .rubber-band {
   fill: rgba(74, 144, 226, 0.08);
@@ -356,4 +363,77 @@ html, body {
   height: 1px;
   background: #eee;
   margin: 4px 2px;
+}
+
+/* ---- リンクのURLを表示するポップオーバー ---- */
+#link-popover {
+  position: fixed;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  max-width: 340px;
+  background: #1a1b26;
+  border-radius: 8px;
+  padding: 7px 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  z-index: 150;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+#link-popover.open {
+  display: flex;
+}
+
+#link-popover a {
+  color: #7aa2f7;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+#link-popover a:hover {
+  text-decoration: underline;
+}
+
+#link-popover button {
+  flex: none;
+  border: none;
+  background: none;
+  color: #a9b1d6;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+#link-popover button:hover {
+  background: #3a3b50;
+  color: #fff;
+}
+
+/* 編集モード（URL入力欄 + 保存/キャンセル/削除）は表示モードより横幅が必要なため広げる */
+#link-popover.editing {
+  max-width: 420px;
+}
+
+#link-popover input#link-input {
+  flex: 1;
+  min-width: 200px;
+  background: #12131c;
+  border: 1px solid #3a3b50;
+  border-radius: 5px;
+  padding: 5px 8px;
+  color: #c0caf5;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+#link-popover input#link-input:focus {
+  border-color: #7aa2f7;
 }

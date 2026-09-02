@@ -201,6 +201,23 @@ const Model = (() => {
       if (n) n.content = content;
     },
 
+    // ---- リンク（ノードごとに任意でひとつだけ持てるURL） ----
+    // 未設定のノードは link フィールド自体を持たない（JSON出力・比較を単純にするため）。
+
+    // 指定ノードの現在のリンクURLを返す。未設定なら null
+    getLink(id) {
+      const n = _nodes.find(n => n.id === id);
+      return (n && n.link) ? n.link : null;
+    },
+
+    // リンクURLを設定する。url が空文字/null/undefined ならフィールドごと削除する
+    setLink(id, url) {
+      const n = _nodes.find(n => n.id === id);
+      if (!n) return;
+      if (url) n.link = url;
+      else delete n.link;
+    },
+
     // 指定IDのノード1件を削除する（選択状態には影響しない）。
     // 空のテキストノードを編集確定時に自動削除する用途などで使う。
     // 戻り値は removeSelected と同じ形（{ type, nodeIds, edgeIds }）。見つからなければ null。

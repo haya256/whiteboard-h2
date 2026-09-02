@@ -32,8 +32,12 @@
   </div>
   <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
 
-  <!-- 右クリックメニュー（重なり順の変更・削除） -->
+  <!-- 右クリックメニュー（リンクの設定・重なり順の変更・削除） -->
   <div id="context-menu">
+    <button data-action="link-set">🔗 リンクを設定…</button>
+    <button data-action="link-edit">🔗 リンクを編集…</button>
+    <button data-action="link-remove">🔗 リンクを削除</button>
+    <div class="context-menu-sep link-menu-sep"></div>
     <button data-action="front">最前面へ移動</button>
     <button data-action="forward">前面へ移動</button>
     <button data-action="backward">背面へ移動</button>
@@ -41,6 +45,9 @@
     <div class="context-menu-sep"></div>
     <button data-action="delete">削除</button>
   </div>
+
+  <!-- リンクを持つノードをクリックした時に表示するURLポップオーバー -->
+  <div id="link-popover"></div>
 
   <script src="src/model.js"></script>
   <script src="src/view.js"></script>

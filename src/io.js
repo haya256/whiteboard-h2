@@ -219,7 +219,26 @@ const IO = (() => {
         g.appendChild(img);
       }
 
-      svg.appendChild(g);
+      // リンクを持つノードには右上に🔗マークを添える（キャンバス上の表示と揃える）
+      if (node.link) {
+        const badge = document.createElementNS(SVG_NS, 'text');
+        badge.setAttribute('x', node.x + node.width - 6);
+        badge.setAttribute('y', node.y + 15);
+        badge.setAttribute('text-anchor', 'end');
+        badge.setAttribute('font-size', '13');
+        badge.textContent = '🔗';
+        g.appendChild(badge);
+
+        // リンクがあるノードは <a> で包み、静的SVGをブラウザで開いてもクリックで別タブへ飛べるようにする
+        const a = document.createElementNS(SVG_NS, 'a');
+        a.setAttribute('href', node.link);
+        a.setAttributeNS('http://www.w3.org/1999/xlink', 'href', node.link);
+        a.setAttribute('target', '_blank');
+        a.appendChild(g);
+        svg.appendChild(a);
+      } else {
+        svg.appendChild(g);
+      }
     });
 
     const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });

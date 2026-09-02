@@ -24,6 +24,7 @@
       View.selectNodes([]);
       View.selectEdge(null);
       IO.save();
+      closeLinkPopover(); // Undo/Redoでノードの状態が変わるためポップオーバーは閉じる
     }
   );
 
@@ -90,6 +91,203 @@
     zoomLabel.textContent = Math.round(View.getViewport().zoom * 100) + '%';
   }
   updateZoomLabel();
+
+  // ---- リンク（ノードごとに1つ持てるURL） ----
+  // ブラウザの prompt ダイアログはサンドボックス環境で無効化されることがあるため使わず、
+  // ポップオーバー自身に「表示モード」「編集モード」の2状態を持たせて完結させる。
+
+  const linkPopover = document.getElementById('link-popover');
+
+  // ポップオーバー内でのクリック・キー操作がキャンバスのmousedown（選択解除・パン開始）や
+  // ショートカットに伝播しないようにする
+  linkPopover.addEventListener('mousedown', e => e.stopPropagation());
+
+  // ポップオーバーを閉じる（表示モード・編集モードどちらでも呼べる）。
+  // 他所クリック・Esc・ドラッグ開始・ノード削除・Undo/Redo・パン/ズームなど、
+  // 表示位置やリンクの状態がずれうるタイミングで幅広く呼び出す（閉じるだけなので副作用は小さい）
+  function closeLinkPopover() {
+    linkPopover.classList.remove('open', 'editing');
+    linkPopover.innerHTML = '';
+  }
+
+  // ポップオーバーをノード直下の画面座標に配置する
+  function positionLinkPopover(node) {
+    const pos = View.worldToScreen(node.x, node.y + node.height);
+    linkPopover.style.left = Math.round(pos.x) + 'px';
+    linkPopover.style.top = Math.round(pos.y + 6) + 'px';
+  }
+
+  // 指定ノードのリンクURLを表示モードのポップオーバーで表示する（ノード直下に配置）
+  function showLinkPopover(nodeId) {
+    const node = Model.findById(nodeId);
+    const url = node && Model.getLink(nodeId);
+    if (!node || !url) return;
+
+    linkPopover.innerHTML = '';
+    linkPopover.classList.remove('editing');
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = url;
+    a.textContent = url;
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.textContent = '✎ 編集';
+    editBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      Model.select(nodeId);
+      View.selectNodes([nodeId]);
+      View.selectEdge(null);
+      openLinkEditor(nodeId);
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '✕ 解除';
+    removeBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      Model.select(nodeId);
+      removeLinkFromSelected();
+    });
+
+    linkPopover.appendChild(a);
+    linkPopover.appendChild(editBtn);
+    linkPopover.appendChild(removeBtn);
+
+    positionLinkPopover(node);
+    linkPopover.classList.add('open');
+  }
+
+  // 指定ノードのリンクを編集モードのポップオーバーで開く（URL入力欄 + 保存/キャンセル/[削除]）。
+  // 右クリックメニュー「リンクを設定…/編集…」・Ctrl+K・表示モードの「✎ 編集」ボタンから共通で呼ぶ。
+  function openLinkEditor(nodeId) {
+    const node = Model.findById(nodeId);
+    if (!node) return;
+    const current = Model.getLink(nodeId) || '';
+
+    linkPopover.innerHTML = '';
+    linkPopover.classList.add('editing');
+
+    const input = document.createElement('input');
+    input.type = 'url';
+    input.id = 'link-input';
+    input.placeholder = 'https://...';
+    input.value = current;
+    input.autocomplete = 'off';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = '保存';
+    saveBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      saveLinkEditor(nodeId, input.value);
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      cancelLinkEditor(nodeId);
+    });
+
+    // 入力欄内のキー操作（Delete/Backspace/Ctrl+Z/Ctrl+A/Ctrl+]/[ 等）が
+    // キャンバス側のショートカットに横取りされないよう、常にバブリングを止める。
+    // Enter で保存、Esc でキャンセル（キャンバス側のEscハンドラより先に処理し、伝播させない）
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); saveLinkEditor(nodeId, input.value); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancelLinkEditor(nodeId); }
+    });
+
+    linkPopover.appendChild(input);
+    linkPopover.appendChild(saveBtn);
+    linkPopover.appendChild(cancelBtn);
+
+    // 既にリンクが設定済みの場合のみ「削除」ボタンを追加する
+    if (current) {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.textContent = '削除';
+      deleteBtn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        Model.select(nodeId);
+        View.selectNodes([nodeId]);
+        View.selectEdge(null);
+        removeLinkFromSelected();
+      });
+      linkPopover.appendChild(deleteBtn);
+    }
+
+    positionLinkPopover(node);
+    linkPopover.classList.add('open');
+    input.focus();
+    input.select();
+  }
+
+  // 単一選択中のノードに対して編集モードのポップオーバーを開く（右クリックメニュー・Ctrl+K共通）
+  function openLinkEditorForSelection() {
+    const id = Model.getSelectedId();
+    if (!id) return;
+    openLinkEditor(id);
+  }
+
+  // 編集モードの入力欄の内容を保存する。
+  // http(s)://で始まらない入力は先頭にhttps://を補う。空にして保存した場合はリンクを削除する。
+  // 元の値から変化がなければ commit しない
+  function saveLinkEditor(nodeId, rawValue) {
+    const node = Model.findById(nodeId);
+    if (!node) { closeLinkPopover(); return; }
+    const current = Model.getLink(nodeId) || '';
+    const trimmed = (rawValue || '').trim();
+
+    if (trimmed === '') {
+      if (!current) { closeLinkPopover(); return; } // 元々未設定のまま→変化なし
+      Model.setLink(nodeId, null);
+      View.updateLinkBadge(node);
+      closeLinkPopover();
+      commit();
+      return;
+    }
+
+    const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
+    if (normalized === current) { closeLinkPopover(); return; } // 変化なし
+
+    Model.setLink(nodeId, normalized);
+    View.updateLinkBadge(node);
+    closeLinkPopover();
+    commit();
+  }
+
+  // 編集モードをキャンセルする。元々リンクがあれば表示モードへ戻し、なければそのまま閉じる
+  function cancelLinkEditor(nodeId) {
+    if (Model.getLink(nodeId)) showLinkPopover(nodeId);
+    else closeLinkPopover();
+  }
+
+  // 選択中ノードのリンクを削除する（右クリックメニュー「リンクを削除」・ポップオーバーの削除系ボタン共通）
+  function removeLinkFromSelected() {
+    const id = Model.getSelectedId();
+    if (!id || !Model.getLink(id)) return;
+    Model.setLink(id, null);
+    View.updateLinkBadge(Model.findById(id));
+    closeLinkPopover();
+    commit();
+  }
+
+  // Ctrl/Cmd+K：単一選択時のみ、リンク編集ポップオーバーを開く
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k') return;
+    if (editing) return; // テキスト編集中は無効
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (Model.getSelectedIds().length !== 1) return;
+    e.preventDefault();
+    openLinkEditorForSelection();
+  });
 
   // ---- ツールバー ----
 
@@ -262,6 +460,7 @@
 
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
+    closeLinkPopover(); // ズームで表示位置がずれるため閉じる
     const vp = View.getViewport();
     const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
     const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, vp.zoom * factor));
@@ -386,6 +585,12 @@
     }
 
     if (drag) {
+      // 画面座標での移動量がしきい値を超えたら「ドラッグ」とみなす（クリックとの判定に使う）
+      if (!drag.moved) {
+        const cdx = e.clientX - drag.startClientX;
+        const cdy = e.clientY - drag.startClientY;
+        if (Math.abs(cdx) > PAN_CLICK_THRESHOLD || Math.abs(cdy) > PAN_CLICK_THRESHOLD) drag.moved = true;
+      }
       // 選択中の全ノードを同じ移動量で動かす（グループ移動）。単一選択時は従来どおり1つだけ動く
       const dx = pt.x - drag.startX;
       const dy = pt.y - drag.startY;
@@ -401,9 +606,14 @@
   }
 
   function onMouseUp() {
+    // ドラッグせずクリックだけで終わった単一ノード（Shift/Ctrl修飾なし）なら、
+    // リンクポップオーバーの表示対象候補として覚えておく（実際に出すのは commit 後）
+    const clickedNodeId = (drag && !drag.moved && !drag.additive && drag.ids.length === 1)
+      ? drag.ids[0] : null;
     if (drag || resize) { commit(); drag = null; resize = null; }
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
+    if (clickedNodeId && Model.getLink(clickedNodeId)) showLinkPopover(clickedNodeId);
   }
 
   // ---- 矩形選択（ラバーバンド） ----
@@ -544,7 +754,13 @@
       const n = Model.findById(nid);
       if (n) origins[nid] = { x: n.x, y: n.y };
     });
-    drag = { ids, startX: pt.x, startY: pt.y, origins };
+    // moved: マウスアップ時に「クリック」だったか（ドラッグしなかったか）を判定するためのフラグ
+    // additive: Shift/Ctrl+クリックだったか（選択操作なのでリンクのポップオーバー表示対象から除外する）
+    drag = {
+      ids, startX: pt.x, startY: pt.y, origins,
+      moved: false, additive,
+      startClientX: e.clientX, startClientY: e.clientY
+    };
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -591,6 +807,7 @@
     resize = null;
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
+    closeLinkPopover(); // テキスト編集開始時はポップオーバーを閉じる
 
     editing = true;
     const id = nodeEl.dataset.id;
@@ -617,9 +834,11 @@
   // ---- Delete / Backspace キーで削除 ----
 
   document.addEventListener('keydown', e => {
-    // Esc：右クリックメニュー表示中はそれを閉じる。次に接続モード中はそちらを優先して解除。それ以外は選択解除
+    // Esc：右クリックメニュー表示中はそれを閉じる。次にリンクポップオーバー表示中はそれを閉じる。
+    // 次に接続モード中はそちらを優先して解除。それ以外は選択解除
     if (e.key === 'Escape') {
       if (contextMenu.classList.contains('open')) { hideContextMenu(); return; }
+      if (linkPopover.classList.contains('open')) { closeLinkPopover(); return; }
       if (connectMode) { setConnectMode(false); return; }
       if (!editing) {
         Model.clearSelection();
@@ -661,6 +880,7 @@
     removed.edgeIds.forEach(id => View.removeEdge(id));
     View.selectNodes([]);
     View.selectEdge(null);
+    closeLinkPopover(); // 表示中のノードが削除された可能性があるため閉じる
     commit();
   }
 
@@ -710,10 +930,34 @@
     contextMenu.classList.add('open');
   }
 
+  // リンク関連の項目（設定…/編集…/削除）を選択状態に合わせて出し分ける。
+  // 単一選択時のみ表示：リンク未設定なら「設定…」の1つ、設定済みなら「編集…」「削除」の2つ
+  const linkSetBtn = contextMenu.querySelector('[data-action="link-set"]');
+  const linkEditBtn = contextMenu.querySelector('[data-action="link-edit"]');
+  const linkRemoveBtn = contextMenu.querySelector('[data-action="link-remove"]');
+  const linkMenuSep = contextMenu.querySelector('.link-menu-sep');
+
+  function updateContextMenuLinkItems() {
+    const ids = Model.getSelectedIds();
+    const single = ids.length === 1 ? ids[0] : null;
+    const hasLink = single ? !!Model.getLink(single) : false;
+    const show = el => { el.style.display = ''; };
+    const hide = el => { el.style.display = 'none'; };
+
+    if (!single) {
+      [linkSetBtn, linkEditBtn, linkRemoveBtn, linkMenuSep].forEach(hide);
+      return;
+    }
+    show(linkMenuSep);
+    if (hasLink) { hide(linkSetBtn); show(linkEditBtn); show(linkRemoveBtn); }
+    else { show(linkSetBtn); hide(linkEditBtn); hide(linkRemoveBtn); }
+  }
+
   canvas.addEventListener('contextmenu', e => {
     // テキスト編集中はブラウザ標準の右クリックメニュー（コピー/ペースト等）に任せる
     if (editing) return;
     e.preventDefault();
+    closeLinkPopover();
     if (connectMode) return;
 
     const nodeEl = e.target.closest('.node');
@@ -727,6 +971,7 @@
       View.selectNodes(Model.getSelectedIds());
       View.selectEdge(null);
     }
+    updateContextMenuLinkItems();
     showContextMenu(e.clientX, e.clientY);
   });
 
@@ -737,6 +982,8 @@
     hideContextMenu();
 
     if (action === 'delete') { deleteSelected(); return; }
+    if (action === 'link-set' || action === 'link-edit') { openLinkEditorForSelection(); return; }
+    if (action === 'link-remove') { removeLinkFromSelected(); return; }
 
     const ACTION_MAP = { front: 'bringToFront', forward: 'bringForward', backward: 'sendBackward', back: 'sendToBack' };
     reorderSelection(ACTION_MAP[action]);
@@ -745,6 +992,8 @@
   // メニュー外クリック・スクロール・ホイールズームで閉じる
   document.addEventListener('mousedown', e => {
     if (contextMenu.classList.contains('open') && !contextMenu.contains(e.target)) hideContextMenu();
+    // リンクポップオーバーの外側をクリック（ドラッグ開始含む）したら閉じる
+    if (linkPopover.classList.contains('open') && !linkPopover.contains(e.target)) closeLinkPopover();
   });
   document.addEventListener('scroll', hideContextMenu, true);
   canvas.addEventListener('wheel', hideContextMenu);
