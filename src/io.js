@@ -13,7 +13,7 @@ const IO = (() => {
       },
       viewport: { x: 0, y: 0, zoom: 1.0 },
       nodes: Model.getNodes(),
-      edges: []
+      edges: Model.getEdges()
     };
   }
 
@@ -67,6 +67,57 @@ const IO = (() => {
     bg.setAttribute('height', h);
     bg.setAttribute('fill', '#f5f5f8');
     svg.appendChild(bg);
+
+    // コネクタの矢印マーカー定義（色ごとに用意）
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    svg.appendChild(defs);
+    const markerIds = {};
+    function ensureMarker(color) {
+      const id = 'arrow-' + color.replace('#', '');
+      if (markerIds[id]) return id;
+      markerIds[id] = true;
+      const marker = document.createElementNS(SVG_NS, 'marker');
+      marker.id = id;
+      marker.setAttribute('viewBox', '0 0 10 10');
+      marker.setAttribute('refX', '8.5');
+      marker.setAttribute('refY', '5');
+      marker.setAttribute('markerWidth', '7');
+      marker.setAttribute('markerHeight', '7');
+      marker.setAttribute('orient', 'auto-start-reverse');
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', 'M0,0 L10,5 L0,10 z');
+      path.setAttribute('fill', color);
+      marker.appendChild(path);
+      defs.appendChild(marker);
+      return id;
+    }
+
+    // コネクタ（エッジ）をノードより先に描画し、ノードの下に配置する
+    Model.getEdges().forEach(edge => {
+      const from = Model.findById(edge.from);
+      const to = Model.findById(edge.to);
+      if (!from || !to) return;
+
+      const { a, b } = Model.pickAnchors(from, to);
+      const p1 = Model.getAnchors(from)[a];
+      const p2 = Model.getAnchors(to)[b];
+
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', `M${p1.x},${p1.y} L${p2.x},${p2.y}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', edge.style.color);
+      path.setAttribute('stroke-width', edge.style.width);
+
+      const mid = ensureMarker(edge.style.color);
+      if (edge.style.arrow === 'end' || edge.style.arrow === 'both') {
+        path.setAttribute('marker-end', `url(#${mid})`);
+      }
+      if (edge.style.arrow === 'start' || edge.style.arrow === 'both') {
+        path.setAttribute('marker-start', `url(#${mid})`);
+      }
+
+      svg.appendChild(path);
+    });
 
     // 各ノードをSVGネイティブ要素で描画（foreignObject不使用でビューア互換性を確保）
     nodes.forEach(node => {

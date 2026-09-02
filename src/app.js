@@ -7,6 +7,7 @@
   const saved = IO.load();
   if (saved?.nodes?.length) {
     Model.setNodes(saved.nodes);
+    Model.setEdges(saved.edges || []);
     View.renderAll(Model.getNodes());
   }
 
@@ -17,6 +18,7 @@
     View.addNode(node);
     Model.select(node.id);
     View.selectNode(node.id);
+    View.selectEdge(null);
     IO.save();
   });
 
@@ -26,9 +28,25 @@
       View.addNode(node);
       Model.select(node.id);
       View.selectNode(node.id);
+      View.selectEdge(null);
       IO.save();
     });
   });
+
+  // ---- コネクタ（接続モード） ----
+
+  const btnConnector = document.getElementById('btn-connector');
+  let connectMode = false;
+  let connectFrom = null;
+
+  function setConnectMode(on) {
+    connectMode = on;
+    connectFrom = null;
+    btnConnector.classList.toggle('active', on);
+    canvas.classList.toggle('connecting', on);
+  }
+
+  btnConnector.addEventListener('click', () => setConnectMode(!connectMode));
 
   document.getElementById('btn-export').addEventListener('click', () => IO.exportSVG());
 
@@ -37,8 +55,10 @@
     if (!file) return;
     IO.importSVG(file, data => {
       Model.setNodes(data.nodes || []);
+      Model.setEdges(data.edges || []);
       View.renderAll(Model.getNodes());
       View.selectNode(null);
+      View.selectEdge(null);
       IO.save();
     });
     e.target.value = '';
@@ -106,6 +126,24 @@
   canvas.addEventListener('mousedown', e => {
     if (editing) return;
 
+    // ---- 接続モード中：ドラッグやリサイズは発生させず、ノードクリックのみ処理 ----
+    if (connectMode) {
+      const targetEl = e.target.closest('.node');
+      if (!targetEl) { setConnectMode(false); return; } // 空白クリックでモード解除
+      const id = targetEl.dataset.id;
+      if (!connectFrom) {
+        connectFrom = id;
+      } else if (connectFrom !== id) {
+        const edge = Model.addEdge(connectFrom, id);
+        if (edge) {
+          View.addEdge(edge);
+          IO.save();
+        }
+        setConnectMode(false);
+      }
+      return;
+    }
+
     const handleEl = e.target.closest('.resize-handle');
     if (handleEl) {
       e.preventDefault();
@@ -124,10 +162,22 @@
       return;
     }
 
+    // ---- コネクタ（エッジ）のクリック選択 ----
+    const edgeEl = e.target.closest('.edge');
+    if (edgeEl) {
+      e.preventDefault();
+      const id = edgeEl.dataset.id;
+      Model.selectEdge(id);
+      View.selectNode(null);
+      View.selectEdge(id);
+      return;
+    }
+
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) {
       Model.select(null);
       View.selectNode(null);
+      View.selectEdge(null);
       return;
     }
 
@@ -135,6 +185,7 @@
     const id = nodeEl.dataset.id;
     Model.select(id);
     View.selectNode(id);
+    View.selectEdge(null);
 
     const node = Model.findById(id);
     const pt = View.svgPoint(e);
@@ -147,6 +198,7 @@
   // ---- ダブルクリックでテキスト編集 ----
 
   canvas.addEventListener('dblclick', e => {
+    if (connectMode) return;
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) return;
 
@@ -166,6 +218,12 @@
   // ---- Delete / Backspace キーで削除 ----
 
   document.addEventListener('keydown', e => {
+    // Esc で接続モードを解除
+    if (e.key === 'Escape' && connectMode) {
+      setConnectMode(false);
+      return;
+    }
+
     if (editing) return;
     if (e.key !== 'Delete' && e.key !== 'Backspace') return;
 
@@ -173,11 +231,17 @@
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
     e.preventDefault();
-    const id = Model.removeSelected();
-    if (id) {
-      View.removeNode(id);
-      View.selectNode(null);
-      IO.save();
+    const removed = Model.removeSelected();
+    if (!removed) return;
+
+    if (removed.type === 'node') {
+      View.removeNode(removed.id);
+      removed.edgeIds.forEach(eid => View.removeEdge(eid));
+    } else {
+      View.removeEdge(removed.id);
     }
+    View.selectNode(null);
+    View.selectEdge(null);
+    IO.save();
   });
 })();

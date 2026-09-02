@@ -64,6 +64,11 @@ html, body {
 
 #btn-import { display: none; }
 
+#btn-connector.active {
+  background: #4a90e2 !important;
+  color: #fff !important;
+}
+
 /* ---- Canvas ---- */
 #canvas {
   position: fixed;
@@ -73,6 +78,10 @@ html, body {
   background: #f5f5f8;
   cursor: default;
   user-select: none;
+}
+
+#canvas.connecting {
+  cursor: crosshair;
 }
 
 /* ---- Empty state ---- */
@@ -174,4 +183,28 @@ html, body {
 
 .node.selected .resize-handle {
   display: block;
+}
+
+/* ---- コネクタ（エッジ） ---- */
+#edges-layer {
+  cursor: default;
+}
+
+.edge-line {
+  fill: none;
+  pointer-events: none;
+}
+
+/* クリック判定を広げるための透明な太い線 */
+.edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.edge.selected .edge-line {
+  stroke: #4a90e2 !important;
+  stroke-width: 3 !important;
 }

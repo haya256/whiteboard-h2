@@ -154,6 +154,109 @@ const View = (() => {
     return g;
   }
 
+  // ---- コネクタ（エッジ）のSVG要素を生成 ----
+
+  function markerId(color) {
+    return 'arrow-' + color.replace('#', '');
+  }
+
+  // 指定色の矢印マーカーを defs に用意する（既にあれば使い回す）
+  function ensureMarker(color) {
+    const defs = _canvas.querySelector('defs');
+    const id = markerId(color);
+    if (defs.querySelector(`#${id}`)) return id;
+
+    const marker = document.createElementNS(SVG_NS, 'marker');
+    marker.id = id;
+    marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('refX', '8.5');
+    marker.setAttribute('refY', '5');
+    marker.setAttribute('markerWidth', '7');
+    marker.setAttribute('markerHeight', '7');
+    // auto-start-reverse: marker-start で使われた時だけ180度回転してくれる
+    marker.setAttribute('orient', 'auto-start-reverse');
+
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', 'M0,0 L10,5 L0,10 z');
+    path.setAttribute('fill', color);
+    marker.appendChild(path);
+
+    defs.appendChild(marker);
+    return id;
+  }
+
+  // 2ノードから、アンカー自動選択済みの端点座標を計算する
+  function edgeEndpoints(edge) {
+    const from = Model.findById(edge.from);
+    const to = Model.findById(edge.to);
+    if (!from || !to) return null;
+
+    const { a, b } = Model.pickAnchors(from, to);
+    const p1 = Model.getAnchors(from)[a];
+    const p2 = Model.getAnchors(to)[b];
+    return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+  }
+
+  function pathD(pts) {
+    return `M${pts.x1},${pts.y1} L${pts.x2},${pts.y2}`;
+  }
+
+  function makeEdgeEl(edge) {
+    const pts = edgeEndpoints(edge);
+    if (!pts) return null;
+
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.classList.add('edge');
+    g.dataset.id = edge.id;
+
+    // クリック判定用の透明な太い線（見た目には出ない）
+    const hit = document.createElementNS(SVG_NS, 'path');
+    hit.classList.add('edge-hit');
+    hit.setAttribute('d', pathD(pts));
+
+    // 実際に見える線
+    const line = document.createElementNS(SVG_NS, 'path');
+    line.classList.add('edge-line');
+    line.setAttribute('d', pathD(pts));
+    line.setAttribute('stroke', edge.style.color);
+    line.setAttribute('stroke-width', edge.style.width);
+
+    const mid = ensureMarker(edge.style.color);
+    if (edge.style.arrow === 'end' || edge.style.arrow === 'both') {
+      line.setAttribute('marker-end', `url(#${mid})`);
+    }
+    if (edge.style.arrow === 'start' || edge.style.arrow === 'both') {
+      line.setAttribute('marker-start', `url(#${mid})`);
+    }
+
+    g.appendChild(hit);
+    g.appendChild(line);
+    return g;
+  }
+
+  function renderEdges(edges) {
+    const layer = _canvas.querySelector('#edges-layer');
+    layer.querySelectorAll('.edge').forEach(el => el.remove());
+    edges.forEach(edge => {
+      const el = makeEdgeEl(edge);
+      if (el) layer.appendChild(el);
+    });
+  }
+
+  function updateEdgesFor(nodeId) {
+    const layer = _canvas.querySelector('#edges-layer');
+    Model.getEdges().forEach(edge => {
+      if (edge.from !== nodeId && edge.to !== nodeId) return;
+      const el = layer.querySelector(`[data-id="${edge.id}"]`);
+      if (!el) return;
+      const pts = edgeEndpoints(edge);
+      if (!pts) return;
+      const d = pathD(pts);
+      el.querySelector('.edge-hit').setAttribute('d', d);
+      el.querySelector('.edge-line').setAttribute('d', d);
+    });
+  }
+
   // ---- 空状態のヒント ----
 
   function makeEmptyHint() {
@@ -252,6 +355,11 @@ const View = (() => {
       bg.style.pointerEvents = 'none';
       _canvas.appendChild(bg);
 
+      // コネクタ描画用レイヤー。ノードより先に追加しておくことで常に下に描画される
+      const edgesLayer = document.createElementNS(SVG_NS, 'g');
+      edgesLayer.id = 'edges-layer';
+      _canvas.appendChild(edgesLayer);
+
       _canvas.appendChild(makeEmptyHint());
     },
 
@@ -266,6 +374,7 @@ const View = (() => {
         if (n.type === 'sticky') _canvas.appendChild(makeStickyEl(n));
         else if (n.type === 'shape') _canvas.appendChild(makeShapeEl(n));
       });
+      renderEdges(Model.getEdges());
       updateEmptyHint();
     },
 
@@ -283,6 +392,7 @@ const View = (() => {
     moveNode(id, x, y) {
       const el = _canvas.querySelector(`[data-id="${id}"]`);
       if (el) el.setAttribute('transform', `translate(${x},${y})`);
+      updateEdgesFor(id);
     },
 
     resizeNode(id, w, h) {
@@ -308,11 +418,33 @@ const View = (() => {
       if (fo) { fo.setAttribute('width', w); fo.setAttribute('height', h); }
 
       repositionHandles(el, w, h);
+      updateEdgesFor(id);
     },
 
     selectNode(id) {
       _canvas.querySelectorAll('.node.selected').forEach(el => el.classList.remove('selected'));
       if (id) _canvas.querySelector(`[data-id="${id}"]`)?.classList.add('selected');
+    },
+
+    // ---- コネクタ（エッジ） 公開API ----
+
+    addEdge(edge) {
+      const layer = _canvas.querySelector('#edges-layer');
+      const el = makeEdgeEl(edge);
+      if (el) layer.appendChild(el);
+    },
+
+    removeEdge(id) {
+      _canvas.querySelector(`.edge[data-id="${id}"]`)?.remove();
+    },
+
+    selectEdge(id) {
+      _canvas.querySelectorAll('.edge.selected').forEach(el => el.classList.remove('selected'));
+      if (id) _canvas.querySelector(`.edge[data-id="${id}"]`)?.classList.add('selected');
+    },
+
+    updateEdgesFor(id) {
+      updateEdgesFor(id);
     },
 
     startEditing(id, onSave) {
