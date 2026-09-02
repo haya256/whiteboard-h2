@@ -221,8 +221,19 @@ html, body {
   vector-effect: non-scaling-stroke;
 }
 
-.node.selected .resize-handle {
+/* リサイズハンドルは単一選択時のみ表示する（複数選択時はグループ移動の誤操作を防ぐ） */
+.node.solo-selected .resize-handle {
   display: block;
+}
+
+/* ---- 矩形選択（ラバーバンド） ---- */
+.rubber-band {
+  fill: rgba(74, 144, 226, 0.08);
+  stroke: #4a90e2;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 /* ---- コネクタ（エッジ） ---- */

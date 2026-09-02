@@ -249,6 +249,7 @@
   let drag = null;
   let resize = null;
   let editing = false;
+  let rubberBand = null; // 矩形選択（Shift+空白ドラッグ）の状態
 
   const MIN_SIZE = 40;
 
@@ -308,10 +309,17 @@
     }
 
     if (drag) {
-      const x = pt.x - drag.ox;
-      const y = pt.y - drag.oy;
-      Model.updatePosition(drag.id, x, y);
-      View.moveNode(drag.id, x, y);
+      // 選択中の全ノードを同じ移動量で動かす（グループ移動）。単一選択時は従来どおり1つだけ動く
+      const dx = pt.x - drag.startX;
+      const dy = pt.y - drag.startY;
+      drag.ids.forEach(id => {
+        const orig = drag.origins[id];
+        if (!orig) return;
+        const x = orig.x + dx;
+        const y = orig.y + dy;
+        Model.updatePosition(id, x, y);
+        View.moveNode(id, x, y);
+      });
     }
   }
 
@@ -319,6 +327,49 @@
     if (drag || resize) { IO.save(); drag = null; resize = null; }
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
+  }
+
+  // ---- 矩形選択（ラバーバンド） ----
+
+  function rectsIntersect(ax, ay, aw, ah, bx, by, bw, bh) {
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function onRubberMove(e) {
+    const pt = View.svgPoint(e);
+    const x = Math.min(rubberBand.startX, pt.x);
+    const y = Math.min(rubberBand.startY, pt.y);
+    const w = Math.abs(pt.x - rubberBand.startX);
+    const h = Math.abs(pt.y - rubberBand.startY);
+    rubberBand.rect = { x, y, w, h };
+    View.updateRubberBand(rubberBand.el, x, y, w, h);
+  }
+
+  function onRubberUp() {
+    const { x, y, w, h } = rubberBand.rect;
+    const ids = Model.getNodes()
+      .filter(n => rectsIntersect(x, y, w, h, n.x, n.y, n.width, n.height))
+      .map(n => n.id);
+    Model.selectMany(ids);
+    View.selectNodes(ids);
+    View.selectEdge(null);
+
+    View.hideRubberBand(rubberBand.el);
+    rubberBand = null;
+    document.removeEventListener('mousemove', onRubberMove);
+    document.removeEventListener('mouseup', onRubberUp);
+  }
+
+  function startRubberBand(e) {
+    e.preventDefault();
+    const pt = View.svgPoint(e);
+    rubberBand = {
+      startX: pt.x, startY: pt.y,
+      rect: { x: pt.x, y: pt.y, w: 0, h: 0 },
+      el: View.showRubberBand(pt.x, pt.y, 0, 0)
+    };
+    document.addEventListener('mousemove', onRubberMove);
+    document.addEventListener('mouseup', onRubberUp);
   }
 
   canvas.addEventListener('mousedown', e => {
@@ -379,6 +430,11 @@
 
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) {
+      // Shift+空白ドラッグ：矩形選択（ラバーバンド）
+      if (e.shiftKey) {
+        startRubberBand(e);
+        return;
+      }
       // 空白ドラッグ：そのままパン候補として開始する。
       // 移動量がほぼ0のままマウスアップした場合のみ「クリックで選択解除」を行う（従来の挙動を維持）。
       startPan(e, true);
@@ -387,13 +443,31 @@
 
     e.preventDefault();
     const id = nodeEl.dataset.id;
-    Model.select(id);
-    View.selectNode(id);
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+
+    if (additive) {
+      // Shift/Ctrl+クリック：選択への追加・解除トグル
+      Model.toggleSelect(id);
+    } else if (!Model.isSelected(id)) {
+      // 通常クリック：そのノードのみ選択
+      Model.select(id);
+    }
+    // else: 既に選択済みのノードを通常クリック → グループドラッグのため選択を維持する
+
+    View.selectNodes(Model.getSelectedIds());
     View.selectEdge(null);
 
-    const node = Model.findById(id);
+    // Shift+クリックで選択解除された（今クリックしたノードが未選択になった）場合はドラッグを開始しない
+    if (!Model.isSelected(id)) return;
+
     const pt = View.svgPoint(e);
-    drag = { id, ox: pt.x - node.x, oy: pt.y - node.y };
+    const ids = Model.getSelectedIds();
+    const origins = {};
+    ids.forEach(nid => {
+      const n = Model.findById(nid);
+      if (n) origins[nid] = { x: n.x, y: n.y };
+    });
+    drag = { ids, startX: pt.x, startY: pt.y, origins };
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -443,29 +517,42 @@
   // ---- Delete / Backspace キーで削除 ----
 
   document.addEventListener('keydown', e => {
-    // Esc で接続モードを解除
-    if (e.key === 'Escape' && connectMode) {
-      setConnectMode(false);
+    // Esc：接続モード中はそちらを優先して解除。それ以外は選択解除
+    if (e.key === 'Escape') {
+      if (connectMode) { setConnectMode(false); return; }
+      if (!editing) {
+        Model.clearSelection();
+        View.selectNodes([]);
+        View.selectEdge(null);
+      }
       return;
     }
 
     if (editing) return;
-    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
 
     const tag = document.activeElement?.tagName;
+
+    // Ctrl/Cmd+A：全ノード選択
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      const ids = Model.getNodes().map(n => n.id);
+      Model.selectMany(ids);
+      View.selectNodes(ids);
+      View.selectEdge(null);
+      return;
+    }
+
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
     e.preventDefault();
     const removed = Model.removeSelected();
     if (!removed) return;
 
-    if (removed.type === 'node') {
-      View.removeNode(removed.id);
-      removed.edgeIds.forEach(eid => View.removeEdge(eid));
-    } else {
-      View.removeEdge(removed.id);
-    }
-    View.selectNode(null);
+    removed.nodeIds.forEach(id => View.removeNode(id));
+    removed.edgeIds.forEach(id => View.removeEdge(id));
+    View.selectNodes([]);
     View.selectEdge(null);
     IO.save();
   });

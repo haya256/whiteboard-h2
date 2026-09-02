@@ -501,9 +501,45 @@ const View = (() => {
       updateEdgesFor(id);
     },
 
+    // 複数選択対応：選択枠(.selected)は選択中の全ノードに付与する。
+    // リサイズハンドル(.solo-selected)は単一選択時のみ表示させる。
+    selectNodes(ids) {
+      const idSet = new Set(ids || []);
+      const solo = idSet.size === 1 ? Array.from(idSet)[0] : null;
+      _canvas.querySelectorAll('.node').forEach(el => {
+        const id = el.dataset.id;
+        el.classList.toggle('selected', idSet.has(id));
+        el.classList.toggle('solo-selected', id === solo);
+      });
+    },
+
+    // 後方互換：単一ノード選択（id が null/undefined なら選択解除）
     selectNode(id) {
-      _canvas.querySelectorAll('.node.selected').forEach(el => el.classList.remove('selected'));
-      if (id) _canvas.querySelector(`[data-id="${id}"]`)?.classList.add('selected');
+      this.selectNodes(id ? [id] : []);
+    },
+
+    // ---- 矩形選択（ラバーバンド） ----
+
+    showRubberBand(x, y, w, h) {
+      const rect = document.createElementNS(SVG_NS, 'rect');
+      rect.classList.add('rubber-band');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', w);
+      rect.setAttribute('height', h);
+      _viewport.appendChild(rect);
+      return rect;
+    },
+
+    updateRubberBand(el, x, y, w, h) {
+      el.setAttribute('x', x);
+      el.setAttribute('y', y);
+      el.setAttribute('width', w);
+      el.setAttribute('height', h);
+    },
+
+    hideRubberBand(el) {
+      el?.remove();
     },
 
     // ---- コネクタ（エッジ） 公開API ----

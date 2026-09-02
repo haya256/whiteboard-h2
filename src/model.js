@@ -8,21 +8,24 @@ const Model = (() => {
 
   let _nodes = [];
   let _edges = [];
-  let _selectedId = null;
+  let _selectedIds = new Set(); // 複数選択中のノードID集合
   let _selectedEdgeId = null;
   let _colorIdx = 0;
 
   return {
     getNodes: () => _nodes,
     getEdges: () => _edges,
-    getSelectedId: () => _selectedId,
+    // 後方互換：単一選択時のみIDを返す。複数選択・未選択時は null
+    getSelectedId: () => (_selectedIds.size === 1 ? Array.from(_selectedIds)[0] : null),
+    getSelectedIds: () => Array.from(_selectedIds),
+    isSelected: id => _selectedIds.has(id),
     getSelectedEdgeId: () => _selectedEdgeId,
     findById: id => _nodes.find(n => n.id === id),
     findEdgeById: id => _edges.find(e => e.id === id),
 
     setNodes(nodes) {
       _nodes = nodes;
-      _selectedId = null;
+      _selectedIds = new Set();
       _selectedEdgeId = null;
     },
 
@@ -31,14 +34,35 @@ const Model = (() => {
       _selectedEdgeId = null;
     },
 
+    // 単一選択。id が falsy なら選択解除
     select(id) {
-      _selectedId = id;
+      _selectedIds = id ? new Set([id]) : new Set();
+      _selectedEdgeId = null;
+    },
+
+    // id の選択状態をトグル（Shift/Ctrl+クリック用）
+    toggleSelect(id) {
+      if (!id) return;
+      if (_selectedIds.has(id)) _selectedIds.delete(id);
+      else _selectedIds.add(id);
+      _selectedEdgeId = null;
+    },
+
+    // 複数選択をまとめて設定（矩形選択・全選択用）
+    selectMany(ids) {
+      _selectedIds = new Set(ids || []);
+      _selectedEdgeId = null;
+    },
+
+    // ノード選択・エッジ選択の両方を解除する
+    clearSelection() {
+      _selectedIds = new Set();
       _selectedEdgeId = null;
     },
 
     selectEdge(id) {
       _selectedEdgeId = id;
-      _selectedId = null;
+      _selectedIds = new Set();
     },
 
     addSticky() {
@@ -178,24 +202,27 @@ const Model = (() => {
       return { a, b };
     },
 
+    // 選択中のノード（複数可）またはエッジを削除する。
+    // 戻り値は常に { type, nodeIds, edgeIds } の形（削除したノードID配列とエッジID配列）
     removeSelected() {
       if (_selectedEdgeId) {
         const id = _selectedEdgeId;
         _edges = _edges.filter(e => e.id !== id);
         _selectedEdgeId = null;
-        return { type: 'edge', id };
+        return { type: 'edge', nodeIds: [], edgeIds: [id] };
       }
-      if (_selectedId) {
-        const id = _selectedId;
-        _nodes = _nodes.filter(n => n.id !== id);
+      if (_selectedIds.size > 0) {
+        const nodeIds = Array.from(_selectedIds);
+        const idSet = new Set(nodeIds);
+        _nodes = _nodes.filter(n => !idSet.has(n.id));
         // 削除されたノードに接続されていたエッジも道連れで削除する
         const edgeIds = [];
         _edges = _edges.filter(e => {
-          if (e.from === id || e.to === id) { edgeIds.push(e.id); return false; }
+          if (idSet.has(e.from) || idSet.has(e.to)) { edgeIds.push(e.id); return false; }
           return true;
         });
-        _selectedId = null;
-        return { type: 'node', id, edgeIds };
+        _selectedIds = new Set();
+        return { type: 'node', nodeIds, edgeIds };
       }
       return null;
     }
