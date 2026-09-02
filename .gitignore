@@ -14,3 +14,10 @@ config/
 
 # ユーザーデータ（非公開）
 data/
+
+# devcontainer
+.devcontainer/
+
+# Next.js ビルド成果物（Deploy Now 用。public/ はビルド時に生成されるコピー）
+.next/
+public/
