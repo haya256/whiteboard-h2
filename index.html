@@ -8,6 +8,9 @@
 <body>
   <div id="toolbar">
     <span class="app-title">openboard（仮）</span>
+    <!-- ボード名（クリックで編集。保存時のファイル名になる） -->
+    <span id="board-name" title="クリックしてボード名を編集（保存時のファイル名になります）"></span>
+    <input type="text" id="board-name-input" maxlength="80" hidden>
     <button id="btn-add-sticky">+ 付箋</button>
     <button id="btn-add-rect">□ 矩形</button>
     <button id="btn-add-ellipse">○ 楕円</button>

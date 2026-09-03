@@ -31,6 +31,47 @@ html, body {
   user-select: none;
 }
 
+/* ---- ボード名 ---- */
+#board-name {
+  color: #a9b1d6;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: text;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+  margin-right: 8px;
+}
+
+#board-name:hover {
+  background: #2a2b3d;
+  color: #c0caf5;
+}
+
+#board-name-input {
+  width: 220px;
+  background: #12131c;
+  border: 1px solid #3a3b50;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #c0caf5;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  margin-right: 8px;
+}
+
+#board-name-input:focus {
+  border-color: #7aa2f7;
+}
+
+#board-name-input[hidden] {
+  display: none;
+}
+
 .toolbar-sep { flex: 1; }
 
 #toolbar button, .toolbar-btn {

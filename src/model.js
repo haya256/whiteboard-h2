@@ -6,11 +6,15 @@ const Model = (() => {
     '#90CAF9', '#CE93D8', '#F48FB1', '#80DEEA'
   ];
 
+  const DEFAULT_TITLE = '無題のボード';
+
   let _nodes = [];
   let _edges = [];
   let _selectedIds = new Set(); // 複数選択中のノードID集合
   let _selectedEdgeId = null;
   let _colorIdx = 0;
+  // ボード名。ファイル名・タブ名に使う。Undo 履歴の対象外。
+  let _title = DEFAULT_TITLE;
 
   // ---- 重なり順（Z順）ヘルパー ----
   // 重なり順は _nodes の配列順そのもので表現する（末尾＝最前面、先頭＝最背面）。
@@ -57,6 +61,15 @@ const Model = (() => {
     getSelectedEdgeId: () => _selectedEdgeId,
     findById: id => _nodes.find(n => n.id === id),
     findEdgeById: id => _edges.find(e => e.id === id),
+
+    // ---- ボード名 ----
+    getTitle: () => _title,
+    getDefaultTitle: () => DEFAULT_TITLE,
+    // title を trim して設定する。空になった場合は既定のボード名に戻す
+    setTitle(title) {
+      const trimmed = String(title == null ? '' : title).trim();
+      _title = trimmed || DEFAULT_TITLE;
+    },
 
     setNodes(nodes) {
       _nodes = nodes;

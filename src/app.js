@@ -12,6 +12,56 @@
   }
   if (saved?.viewport) View.setViewport(saved.viewport);
 
+  // ---- ボード名（ツールバー表示・クリックで編集・ファイル名/タブ名に反映） ----
+  // タイトルは Undo 履歴の対象外（History.push の対象は nodes/edges のみ）。
+
+  const boardNameEl = document.getElementById('board-name');
+  const boardNameInput = document.getElementById('board-name-input');
+
+  function renderBoardName() {
+    boardNameEl.textContent = Model.getTitle();
+    document.title = Model.getTitle() + ' - openboard（仮）';
+  }
+
+  // 保存済みデータにタイトルがあれば復元する。旧データは title が固定値 'ボード' なので
+  // それは「未設定」とみなし既定のボード名のままにする
+  if (typeof saved?.meta?.title === 'string' && saved.meta.title.trim() && saved.meta.title !== 'ボード') {
+    Model.setTitle(saved.meta.title);
+  }
+  renderBoardName();
+
+  function startBoardNameEdit() {
+    boardNameInput.value = Model.getTitle();
+    boardNameEl.hidden = true;
+    boardNameInput.hidden = false;
+    boardNameInput.focus();
+    boardNameInput.select();
+  }
+
+  function finishBoardNameEdit(commitValue) {
+    if (commitValue) Model.setTitle(boardNameInput.value);
+    boardNameInput.hidden = true;
+    boardNameEl.hidden = false;
+    renderBoardName();
+    if (commitValue) IO.save(); // タイトルは undo 対象外なので commit() ではなく IO.save() のみ
+  }
+
+  boardNameEl.addEventListener('click', startBoardNameEdit);
+
+  boardNameInput.addEventListener('keydown', e => {
+    // 入力欄内のキー操作がキャンバス側のショートカット（Delete/Ctrl+A等）に
+    // 横取りされないよう、常にバブリングを止める
+    if (e.key === 'Enter') { e.preventDefault(); finishBoardNameEdit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finishBoardNameEdit(false); }
+    e.stopPropagation();
+  });
+
+  boardNameInput.addEventListener('blur', () => {
+    // Enter/Escapeで既に確定済み（hidden化済み）の場合は二重確定しない
+    if (boardNameInput.hidden) return;
+    finishBoardNameEdit(true);
+  });
+
   // ---- Undo/Redo（操作履歴） ----
   // nodes/edges のみを対象にスナップショットを積む。viewport・選択状態は対象外。
   // 読み込み直後の状態（saved があればそれ、なければ空の状態）を必ず基点として記録する。
@@ -624,7 +674,7 @@
   document.getElementById('btn-import').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
-    IO.importSVG(file, data => {
+    IO.importSVG(file, (data, fileName) => {
       Model.setNodes(data.nodes || []);
       Model.setEdges(data.edges || []);
       View.renderAll(Model.getNodes());
@@ -632,6 +682,10 @@
       View.selectEdge(null);
       View.setViewport(data.viewport || { x: 0, y: 0, zoom: 1 });
       updateZoomLabel();
+      // ボード名はファイル名を優先し、なければメタデータのタイトルを使う
+      const base = (fileName || '').replace(/\.svg$/i, '').trim();
+      Model.setTitle(base || data.meta?.title || '');
+      renderBoardName();
       commit();
       refreshTextStylePopover(); // 選択は解除済みのため閉じる
     });

@@ -58,13 +58,22 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     return {
       version: '0.1',
       meta: {
-        title: 'ボード',
+        title: Model.getTitle(),
         modified: new Date().toISOString()
       },
       viewport: View.getViewport(),
       nodes: Model.getNodes(),
       edges: Model.getEdges()
     };
+  }
+
+  // ボード名をファイル名として使えるよう、OSで使えない文字を取り除いて整形する（拡張子込みで返す）
+  function toFileName(title) {
+    const cleaned = String(title || '')
+      .replace(/[/\\:*?"<>|\x00-\x1f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return (cleaned || Model.getDefaultTitle()) + '.svg';
   }
 
   // 容量超過の警告は連続して出さないよう、直前が成功したかどうかを覚えておく
@@ -221,7 +230,7 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'board.svg';
+    a.download = toFileName(Model.getTitle());
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -235,7 +244,7 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
         const meta = doc.querySelector('metadata');
         const text = meta?.textContent?.trim();
         if (!text) throw new Error('openboard形式のメタデータが見つかりません');
-        onSuccess(JSON.parse(text));
+        onSuccess(JSON.parse(text), file.name);
       } catch (err) {
         showToast('読み込みに失敗しました: ' + err.message);
       }
