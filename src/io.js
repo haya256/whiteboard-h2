@@ -20,6 +20,20 @@ const IO = (() => {
   // 容量超過の警告は連続して出さないよう、直前が成功したかどうかを覚えておく
   let _quotaWarned = false;
 
+  // window.alert は使わずページ内トーストで通知する（#toast、数秒で自動的に消える）
+  let _toastTimer = null;
+  function showToast(message) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add('open');
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => {
+      toast.classList.remove('open');
+      _toastTimer = null;
+    }, 4000);
+  }
+
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(buildData()));
@@ -28,7 +42,7 @@ const IO = (() => {
       console.warn('自動保存に失敗しました:', e);
       if (!_quotaWarned) {
         _quotaWarned = true;
-        alert('画像が大きすぎて自動保存できません。.svg で保存してください');
+        showToast('画像が大きすぎて自動保存できません。.svg で保存してください');
       }
     }
   }
@@ -261,11 +275,11 @@ const IO = (() => {
         if (!text) throw new Error('openboard形式のメタデータが見つかりません');
         onSuccess(JSON.parse(text));
       } catch (err) {
-        alert('読み込みに失敗しました: ' + err.message);
+        showToast('読み込みに失敗しました: ' + err.message);
       }
     };
     reader.readAsText(file);
   }
 
-  return { save, load, exportSVG, importSVG };
+  return { save, load, exportSVG, importSVG, showToast };
 })();

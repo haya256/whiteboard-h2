@@ -161,8 +161,8 @@ const Model = (() => {
       return node;
     },
 
-    // 画像ノードを追加する。naturalW/H は画像の自然サイズ。
-    // 縦横比を保ったまま最大 IMAGE_MAX_SIZE に収まるよう縮小する。
+    // 画像ノードを追加する。naturalW/H は画像の自然サイズ（src/image.js で圧縮済みのサイズが渡される）。
+    // 縦横比を保ったまま最大 400px（定数 MAX）に収まるよう表示サイズを縮小する。
     // x, y を指定した場合はその点を画像の中心として配置する（未指定なら他ノードと同様ランダム配置）。
     addImage(src, naturalW, naturalH, x, y) {
       const MAX = 400;

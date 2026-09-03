@@ -437,3 +437,25 @@ html, body {
 #link-popover input#link-input:focus {
   border-color: #7aa2f7;
 }
+
+/* ---- 通知トースト（容量超過・読み込み失敗などを alert の代わりに表示） ---- */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  background: #1a1b26;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  z-index: 200;
+  max-width: 80vw;
+}
+
+#toast.open {
+  display: block;
+}

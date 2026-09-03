@@ -327,25 +327,40 @@
 
   // ---- 画像の追加（共通処理） ----
 
-  // File を読み込んで Base64 化し、自然サイズを取得した上でノードとして追加する。
+  // src（dataURL）と自然サイズからノードを追加する共通処理。
   // x, y を指定すると、その点を中心に配置する（ドロップ位置・ペースト位置用）。
-  function loadImageFile(file, x, y) {
-    if (!file || !file.type || !file.type.startsWith('image/')) return;
+  function addImageNode(src, width, height, x, y) {
+    const node = Model.addImage(src, width, height, x, y);
+    View.addNode(node);
+    Model.select(node.id);
+    View.selectNode(node.id);
+    View.selectEdge(null);
+    commit();
+  }
+
+  // 圧縮に失敗した場合のフォールバック：無圧縮のまま読み込む（従来の挙動）
+  function loadImageFileUncompressed(file, x, y) {
     const reader = new FileReader();
     reader.onload = e => {
       const src = e.target.result;
       const img = new Image();
       img.onload = () => {
-        const node = Model.addImage(src, img.naturalWidth, img.naturalHeight, x, y);
-        View.addNode(node);
-        Model.select(node.id);
-        View.selectNode(node.id);
-        View.selectEdge(null);
-        commit();
+        addImageNode(src, img.naturalWidth, img.naturalHeight, x, y);
       };
       img.src = src;
     };
     reader.readAsDataURL(file);
+  }
+
+  // File を ImageUtil.compress で圧縮してノードとして追加する（localStorage 容量節約のため）。
+  // 圧縮に失敗した場合は loadImageFileUncompressed にフォールバックする。
+  function loadImageFile(file, x, y) {
+    if (!file || !file.type || !file.type.startsWith('image/')) return;
+    ImageUtil.compress(file).then(({ src, width, height }) => {
+      addImageNode(src, width, height, x, y);
+    }).catch(() => {
+      loadImageFileUncompressed(file, x, y);
+    });
   }
 
   document.getElementById('btn-image').addEventListener('change', e => {
