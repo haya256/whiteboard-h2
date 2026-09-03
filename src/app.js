@@ -25,6 +25,7 @@
       View.selectEdge(null);
       IO.save();
       closeLinkPopover(); // Undo/Redoでノードの状態が変わるためポップオーバーは閉じる
+      refreshTextStylePopover(); // 選択は解除済みのため通常は閉じるだけになる
     }
   );
 
@@ -289,6 +290,205 @@
     openLinkEditorForSelection();
   });
 
+  // ---- テキストスタイル編集ポップオーバー（文字サイズ・色・太字・横位置） ----
+  // ノードを1つだけ選択している間、ノード上部に出す。対象は画像以外（sticky/shape/text）。
+  // 生成・配置・イベントは全て refreshTextStylePopover() を起点にする（開閉と再配置を1関数に集約）。
+
+  const textStylePopover = document.getElementById('text-style-popover');
+  textStylePopover.addEventListener('mousedown', e => e.stopPropagation());
+
+  const FONT_SIZE_STEPS = [12, 14, 18, 24, 32, 48];
+  const TEXT_COLORS = ['#333333', '#757575', '#ffffff', '#e53935', '#fb8c00', '#43a047', '#1e88e5', '#8e24aa'];
+  const ALIGN_LABELS = { left: '左揃え', center: '中央揃え', right: '右揃え' };
+  // 横位置アイコン（3本の横棒。長さと位置で左/中央/右を表す）
+  const ALIGN_ICONS = {
+    left: '<svg viewBox="0 0 16 12" width="14" height="14"><rect x="1" y="1" width="14" height="2" fill="currentColor"/><rect x="1" y="5" width="9" height="2" fill="currentColor"/><rect x="1" y="9" width="12" height="2" fill="currentColor"/></svg>',
+    center: '<svg viewBox="0 0 16 12" width="14" height="14"><rect x="1" y="1" width="14" height="2" fill="currentColor"/><rect x="3.5" y="5" width="9" height="2" fill="currentColor"/><rect x="2" y="9" width="12" height="2" fill="currentColor"/></svg>',
+    right: '<svg viewBox="0 0 16 12" width="14" height="14"><rect x="1" y="1" width="14" height="2" fill="currentColor"/><rect x="6" y="5" width="9" height="2" fill="currentColor"/><rect x="4" y="9" width="12" height="2" fill="currentColor"/></svg>'
+  };
+
+  function closeTextStylePopover() {
+    textStylePopover.classList.remove('open');
+    textStylePopover.innerHTML = '';
+  }
+
+  function appendPopoverSeparator() {
+    const sep = document.createElement('span');
+    sep.className = 'tsp-sep';
+    textStylePopover.appendChild(sep);
+  }
+
+  // ノードの上、画面上端に収まらない場合はノードの下（リンクポップオーバーと同じ位置）に回す
+  function positionTextStylePopover(node) {
+    const top = View.worldToScreen(node.x, node.y);
+    const height = textStylePopover.offsetHeight;
+    let y = top.y - height - 8;
+    if (y < 0) {
+      const bottom = View.worldToScreen(node.x, node.y + node.height);
+      y = bottom.y + 8;
+    }
+    textStylePopover.style.left = Math.round(top.x) + 'px';
+    textStylePopover.style.top = Math.round(y) + 'px';
+  }
+
+  // ポップオーバーの中身を生成する（サイズ / 色 / 太字 / 横位置）
+  function buildTextStylePopover(node) {
+    textStylePopover.innerHTML = '';
+    const style = node.style || {};
+    const fontSize = style.fontSize || 14;
+    const bold = !!style.bold;
+    const align = style.align || (node.type === 'shape' ? 'center' : 'left');
+    const color = (style.color || '#333333').toLowerCase();
+
+    // ---- 文字サイズ ----
+    const sizeGroup = document.createElement('span');
+    sizeGroup.className = 'tsp-group';
+
+    const minusBtn = document.createElement('button');
+    minusBtn.type = 'button';
+    minusBtn.title = '文字を小さく';
+    minusBtn.textContent = 'A−';
+
+    const sizeLabel = document.createElement('span');
+    sizeLabel.className = 'tsp-size-label';
+    sizeLabel.textContent = fontSize;
+
+    const plusBtn = document.createElement('button');
+    plusBtn.type = 'button';
+    plusBtn.title = '文字を大きく';
+    plusBtn.textContent = 'A+';
+
+    // 段階リストに現在値が無い場合：A+は直近の大きい値、A-は直近の小さい値へ移動する
+    const idx = FONT_SIZE_STEPS.indexOf(fontSize);
+    let smaller, larger;
+    if (idx >= 0) {
+      smaller = idx > 0 ? FONT_SIZE_STEPS[idx - 1] : null;
+      larger = idx < FONT_SIZE_STEPS.length - 1 ? FONT_SIZE_STEPS[idx + 1] : null;
+    } else {
+      const below = FONT_SIZE_STEPS.filter(v => v < fontSize);
+      const above = FONT_SIZE_STEPS.filter(v => v > fontSize);
+      smaller = below.length ? below[below.length - 1] : null;
+      larger = above.length ? above[0] : null;
+    }
+    minusBtn.disabled = smaller === null;
+    plusBtn.disabled = larger === null;
+    minusBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      if (smaller !== null) applyStylePatch(node.id, { fontSize: smaller });
+    });
+    plusBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      if (larger !== null) applyStylePatch(node.id, { fontSize: larger });
+    });
+
+    sizeGroup.appendChild(minusBtn);
+    sizeGroup.appendChild(sizeLabel);
+    sizeGroup.appendChild(plusBtn);
+    textStylePopover.appendChild(sizeGroup);
+
+    appendPopoverSeparator();
+
+    // ---- 文字色（8色パレット） ----
+    const colorGroup = document.createElement('span');
+    colorGroup.className = 'tsp-group tsp-colors';
+    TEXT_COLORS.forEach(c => {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'tsp-swatch';
+      if (c === '#ffffff') sw.classList.add('tsp-swatch-white');
+      if (c.toLowerCase() === color) sw.classList.add('active');
+      sw.style.background = c;
+      sw.title = c;
+      sw.addEventListener('click', ev => {
+        ev.stopPropagation();
+        applyStylePatch(node.id, { color: c });
+      });
+      colorGroup.appendChild(sw);
+    });
+    textStylePopover.appendChild(colorGroup);
+
+    appendPopoverSeparator();
+
+    // ---- 太字 ----
+    const boldBtn = document.createElement('button');
+    boldBtn.type = 'button';
+    boldBtn.className = 'tsp-bold' + (bold ? ' active' : '');
+    boldBtn.title = '太字（Ctrl+B）';
+    boldBtn.textContent = 'B';
+    boldBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      applyStylePatch(node.id, { bold: !bold });
+    });
+    textStylePopover.appendChild(boldBtn);
+
+    // ---- 横位置（左/中央/右） ----
+    const alignGroup = document.createElement('span');
+    alignGroup.className = 'tsp-group';
+    ['left', 'center', 'right'].forEach(a => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tsp-align' + (align === a ? ' active' : '');
+      btn.title = ALIGN_LABELS[a];
+      btn.innerHTML = ALIGN_ICONS[a];
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        applyStylePatch(node.id, { align: a });
+      });
+      alignGroup.appendChild(btn);
+    });
+    textStylePopover.appendChild(alignGroup);
+  }
+
+  // 選択が「1ノードだけ・画像以外・編集中でない・ドラッグ/リサイズ中でない」なら
+  // ポップオーバーを生成・配置して表示、それ以外は閉じる。
+  // 選択確定・ズーム・パン終了・移動/リサイズ終了・スタイル変更後など、幅広い箇所から呼ぶ。
+  function refreshTextStylePopover() {
+    const ids = Model.getSelectedIds();
+    if (ids.length !== 1 || editing || drag || resize) { closeTextStylePopover(); return; }
+    const node = Model.findById(ids[0]);
+    if (!node || node.type === 'image' || !node.style) { closeTextStylePopover(); return; }
+    buildTextStylePopover(node);
+    textStylePopover.classList.add('open');
+    positionTextStylePopover(node);
+  }
+
+  // テキストノードの高さを内容に合わせて伸ばす（縮めない）。
+  // finishNodeEdit・スタイル変更（サイズ/太字）の両方から使う共通処理
+  function growToFitText(id) {
+    const node = Model.findById(id);
+    if (!node || node.type !== 'text') return;
+    const h = View.measureTextHeight(id);
+    if (h && h > node.height) {
+      Model.updateSize(id, node.width, h);
+      View.resizeNode(id, node.width, node.height);
+    }
+  }
+
+  // ポップオーバーの各ボタン共通の適用処理：Model更新→View反映→（テキストのみ）高さ追従→履歴確定→再表示
+  function applyStylePatch(id, patch) {
+    const node = Model.findById(id);
+    if (!node) return;
+    Model.updateStyle(id, patch);
+    View.updateNodeStyle(node);
+    growToFitText(id);
+    commit();
+    refreshTextStylePopover();
+  }
+
+  // Ctrl/Cmd+B：編集中でなく単一選択（画像以外）のときのみ太字をトグルする
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'b') return;
+    if (editing) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    const ids = Model.getSelectedIds();
+    if (ids.length !== 1) return;
+    const node = Model.findById(ids[0]);
+    if (!node || node.type === 'image' || !node.style) return;
+    e.preventDefault();
+    applyStylePatch(node.id, { bold: !node.style.bold });
+  });
+
   // ---- ツールバー ----
 
   document.getElementById('btn-add-sticky').addEventListener('click', () => {
@@ -298,6 +498,7 @@
     View.selectNode(node.id);
     View.selectEdge(null);
     commit();
+    refreshTextStylePopover();
   });
 
   ['rect', 'ellipse', 'diamond'].forEach(shape => {
@@ -308,6 +509,7 @@
       View.selectNode(node.id);
       View.selectEdge(null);
       commit();
+      refreshTextStylePopover();
     });
   });
 
@@ -336,6 +538,7 @@
     View.selectNode(node.id);
     View.selectEdge(null);
     commit();
+    refreshTextStylePopover(); // 画像は対象外だが、前の選択で開いていた場合は閉じる
   }
 
   // 圧縮に失敗した場合のフォールバック：無圧縮のまま読み込む（従来の挙動）
@@ -430,6 +633,7 @@
       View.setViewport(data.viewport || { x: 0, y: 0, zoom: 1 });
       updateZoomLabel();
       commit();
+      refreshTextStylePopover(); // 選択は解除済みのため閉じる
     });
     e.target.value = '';
   });
@@ -440,6 +644,7 @@
     View.setViewport({ x: 0, y: 0, zoom: 1 });
     updateZoomLabel();
     IO.save();
+    refreshTextStylePopover();
   });
 
   document.getElementById('btn-zoom-fit').addEventListener('click', () => {
@@ -449,6 +654,7 @@
       View.setViewport({ x: 0, y: 0, zoom: 1 });
       updateZoomLabel();
       IO.save();
+      refreshTextStylePopover();
       return;
     }
     const PAD = 60;
@@ -465,6 +671,7 @@
     View.setViewport({ x, y, zoom });
     updateZoomLabel();
     IO.save();
+    refreshTextStylePopover();
   });
 
   // ---- ホイールでズーム（カーソル位置を中心に拡大縮小） ----
@@ -494,6 +701,7 @@
     View.setViewport({ x, y, zoom: newZoom });
     updateZoomLabel();
     scheduleSave();
+    refreshTextStylePopover(); // リンク版と違い、閉じるだけでなく位置を出し直す
   }, { passive: false });
 
   // ---- パン（空白ドラッグ / Spaceキー押下中のドラッグ / 中ボタンドラッグ） ----
@@ -523,10 +731,12 @@
     canvas.classList.remove('panning');
     document.removeEventListener('mousemove', onPanMove);
     document.removeEventListener('mouseup', onPanUp);
+    refreshTextStylePopover(); // パンで表示位置がずれるため出し直す（クリックで選択解除した場合は閉じる）
   }
 
   function startPan(e, deselectOnClick) {
     e.preventDefault();
+    closeTextStylePopover();
     const vp = View.getViewport();
     pan = {
       startX: e.clientX, startY: e.clientY,
@@ -632,6 +842,7 @@
     if (drag || resize) { commit(); drag = null; resize = null; }
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
+    refreshTextStylePopover();
     if (clickedNodeId && Model.getLink(clickedNodeId)) showLinkPopover(clickedNodeId);
   }
 
@@ -664,6 +875,7 @@
     rubberBand = null;
     document.removeEventListener('mousemove', onRubberMove);
     document.removeEventListener('mouseup', onRubberUp);
+    refreshTextStylePopover();
   }
 
   function startRubberBand(e) {
@@ -714,6 +926,7 @@
     const handleEl = e.target.closest('.resize-handle');
     if (handleEl) {
       e.preventDefault();
+      closeTextStylePopover(); // リサイズ開始
       const nodeEl = handleEl.closest('.node');
       const id = nodeEl.dataset.id;
       const node = Model.findById(id);
@@ -737,6 +950,7 @@
       Model.selectEdge(id);
       View.selectNode(null);
       View.selectEdge(id);
+      refreshTextStylePopover(); // ノード選択が解除されるため閉じる
       return;
     }
 
@@ -779,6 +993,7 @@
       const n = Model.findById(nid);
       if (n) origins[nid] = { x: n.x, y: n.y };
     });
+    closeTextStylePopover(); // ドラッグ開始（クリックのみだった場合は onMouseUp で出し直す）
     // moved: マウスアップ時に「クリック」だったか（ドラッグしなかったか）を判定するためのフラグ
     // additive: Shift/Ctrl+クリックだったか（選択操作なのでリンクのポップオーバー表示対象から除外する）
     drag = {
@@ -808,13 +1023,11 @@
       }
     } else {
       Model.updateContent(id, content);
-      if (node && node.type === 'text' && scrollHeight && scrollHeight > node.height) {
-        Model.updateSize(id, node.width, scrollHeight);
-        View.resizeNode(id, node.width, node.height);
-      }
+      if (node && node.type === 'text') growToFitText(id);
     }
     commit(); // 内容が変わっていなければ History.push() 内の重複判定で履歴には積まれない
     editing = false;
+    refreshTextStylePopover();
   }
 
   // ---- ダブルクリックでテキスト編集 ----
@@ -833,6 +1046,7 @@
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
     closeLinkPopover(); // テキスト編集開始時はポップオーバーを閉じる
+    closeTextStylePopover();
 
     editing = true;
     const id = nodeEl.dataset.id;
@@ -869,6 +1083,7 @@
         Model.clearSelection();
         View.selectNodes([]);
         View.selectEdge(null);
+        refreshTextStylePopover();
       }
       return;
     }
@@ -885,6 +1100,7 @@
       Model.selectMany(ids);
       View.selectNodes(ids);
       View.selectEdge(null);
+      refreshTextStylePopover();
       return;
     }
 
@@ -906,6 +1122,7 @@
     View.selectNodes([]);
     View.selectEdge(null);
     closeLinkPopover(); // 表示中のノードが削除された可能性があるため閉じる
+    refreshTextStylePopover();
     commit();
   }
 
@@ -998,6 +1215,7 @@
       View.selectNodes(Model.getSelectedIds());
       View.selectEdge(null);
     }
+    refreshTextStylePopover();
     updateContextMenuLinkItems();
     showContextMenu(e.clientX, e.clientY);
   });
@@ -1021,6 +1239,8 @@
     if (contextMenu.classList.contains('open') && !contextMenu.contains(e.target)) hideContextMenu();
     // リンクポップオーバーの外側をクリック（ドラッグ開始含む）したら閉じる
     if (linkPopover.classList.contains('open') && !linkPopover.contains(e.target)) closeLinkPopover();
+    // テキストスタイルポップオーバーの外側をクリックしたら閉じる（保険。各操作開始点でも個別に閉じている）
+    if (textStylePopover.classList.contains('open') && !textStylePopover.contains(e.target)) closeTextStylePopover();
   });
   document.addEventListener('scroll', hideContextMenu, true);
   canvas.addEventListener('wheel', hideContextMenu);

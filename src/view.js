@@ -37,6 +37,17 @@ const View = (() => {
     return text;
   }
 
+  // ---- 文字の見た目（サイズ・色・太字・横位置）をインラインで適用する共通ヘルパー ----
+  // 旧データ（bold / align を持たない）はここで既定値にフォールバックする。
+  // defaultAlign はノード種別ごとの既定横位置（text・sticky は 'left'、shape は 'center'）
+  function applyTextStyle(div, style, defaultAlign) {
+    const s = style || {};
+    div.style.fontSize = (s.fontSize || 14) + 'px';
+    div.style.color = s.color || '#333333';
+    div.style.fontWeight = s.bold ? '700' : '';
+    div.style.textAlign = s.align || defaultAlign || 'left';
+  }
+
   // ---- リサイズハンドル ----
 
   const HANDLE_DIRS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -120,6 +131,7 @@ const View = (() => {
     const div = document.createElementNS(XHTML_NS, 'div');
     div.classList.add('sticky-text');
     setTextContent(div, node.content);
+    applyTextStyle(div, node.style, 'left');
 
     fo.appendChild(div);
     g.appendChild(rect);
@@ -176,6 +188,7 @@ const View = (() => {
     const div = document.createElementNS(XHTML_NS, 'div');
     div.className = 'shape-text';
     setTextContent(div, node.content);
+    applyTextStyle(div, node.style, 'center');
 
     wrap.appendChild(div);
     fo.appendChild(wrap);
@@ -210,9 +223,8 @@ const View = (() => {
 
     const div = document.createElementNS(XHTML_NS, 'div');
     div.className = 'text-content';
-    div.style.fontSize = node.style.fontSize + 'px';
-    div.style.color = node.style.color;
     setTextContent(div, node.content);
+    applyTextStyle(div, node.style, 'left');
 
     fo.appendChild(div);
     g.appendChild(fo);
@@ -662,6 +674,25 @@ const View = (() => {
       } else if (badge) {
         badge.remove();
       }
+    },
+
+    // node.style（fontSize / color / bold / align）の変更を既存要素へ反映する
+    // （テキストスタイル編集ポップオーバーの各ボタンから呼ばれる）
+    updateNodeStyle(node) {
+      if (!node) return;
+      const el = _canvas.querySelector(`[data-id="${node.id}"]`);
+      if (!el) return;
+      const div = el.querySelector('.sticky-text') || el.querySelector('.shape-text') || el.querySelector('.text-content');
+      if (!div) return;
+      const defaultAlign = node.type === 'shape' ? 'center' : 'left';
+      applyTextStyle(div, node.style, defaultAlign);
+    },
+
+    // テキストノードの文字divの実測高さを返す（サイズ変更後の自動高さ調整用）
+    measureTextHeight(id) {
+      const el = _canvas.querySelector(`[data-id="${id}"]`);
+      const div = el && el.querySelector('.text-content');
+      return div ? div.scrollHeight : 0;
     },
 
     startEditing(id, onSave) {

@@ -4,6 +4,14 @@ const IO = (() => {
   const STORAGE_KEY = 'openboard_v01';
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
+  // align（left/center/right）から text-anchor と x座標を求める。
+  // pad は左揃え/右揃え時の余白（中央揃えでは使わない）
+  function alignXAnchor(align, x, width, pad) {
+    if (align === 'center') return { anchor: 'middle', x: x + width / 2 };
+    if (align === 'right') return { anchor: 'end', x: x + width - pad };
+    return { anchor: 'start', x: x + pad };
+  }
+
   function buildData() {
     return {
       version: '0.1',
@@ -156,14 +164,19 @@ const IO = (() => {
         rect.setAttribute('fill', node.style.background);
         g.appendChild(rect);
 
+        const bold = !!node.style.bold;
+        const align = node.style.align || 'left';
+        const { anchor, x: textX } = alignXAnchor(align, node.x, node.width, 12);
         const lines = node.content ? node.content.split('\n') : [''];
         const lineH = node.style.fontSize * 1.55;
         lines.forEach((line, i) => {
           const t = document.createElementNS(SVG_NS, 'text');
-          t.setAttribute('x', node.x + 12);
+          t.setAttribute('x', textX);
           t.setAttribute('y', node.y + 14 + node.style.fontSize + i * lineH);
+          t.setAttribute('text-anchor', anchor);
           t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
           t.setAttribute('font-size', node.style.fontSize);
+          if (bold) t.setAttribute('font-weight', '700');
           t.setAttribute('fill', node.style.color);
           t.textContent = line;
           g.appendChild(t);
@@ -190,17 +203,21 @@ const IO = (() => {
         g.appendChild(bg);
 
         if (node.content) {
+          const bold = !!s.bold;
+          const align = s.align || 'center';
+          const { anchor, x: textX } = alignXAnchor(align, x, w, 8);
           const lines = node.content.split('\n');
           const lineH = s.fontSize * 1.4;
           const totalH = lines.length * lineH;
           const baseY = y + h / 2 - totalH / 2 + s.fontSize * 0.85;
           lines.forEach((line, i) => {
             const t = document.createElementNS(SVG_NS, 'text');
-            t.setAttribute('x', x + w / 2);
+            t.setAttribute('x', textX);
             t.setAttribute('y', baseY + i * lineH);
-            t.setAttribute('text-anchor', 'middle');
+            t.setAttribute('text-anchor', anchor);
             t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
             t.setAttribute('font-size', s.fontSize);
+            if (bold) t.setAttribute('font-weight', '700');
             t.setAttribute('fill', s.color);
             t.textContent = line;
             g.appendChild(t);
@@ -208,15 +225,20 @@ const IO = (() => {
         }
       } else if (node.type === 'text') {
         // 背景・枠なし。左上寄せで折り返し済みの行をそのまま出力する
+        const bold = !!node.style.bold;
+        const align = node.style.align || 'left';
+        const padTop = 4, padLeft = 6;
+        const { anchor, x: textX } = alignXAnchor(align, node.x, node.width, padLeft);
         const lines = node.content ? node.content.split('\n') : [''];
         const lineH = node.style.fontSize * 1.4;
-        const padTop = 4, padLeft = 6;
         lines.forEach((line, i) => {
           const t = document.createElementNS(SVG_NS, 'text');
-          t.setAttribute('x', node.x + padLeft);
+          t.setAttribute('x', textX);
           t.setAttribute('y', node.y + padTop + node.style.fontSize * 0.9 + i * lineH);
+          t.setAttribute('text-anchor', anchor);
           t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
           t.setAttribute('font-size', node.style.fontSize);
+          if (bold) t.setAttribute('font-weight', '700');
           t.setAttribute('fill', node.style.color);
           t.textContent = line;
           g.appendChild(t);

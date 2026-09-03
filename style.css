@@ -438,6 +438,103 @@ html, body {
   border-color: #7aa2f7;
 }
 
+/* ---- テキストスタイル編集ポップオーバー（文字サイズ・色・太字・横位置） ---- */
+#text-style-popover {
+  position: fixed;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  background: #1a1b26;
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  z-index: 150;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+#text-style-popover.open {
+  display: flex;
+}
+
+.tsp-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tsp-sep {
+  width: 1px;
+  height: 18px;
+  background: #3a3b50;
+  margin: 0 2px;
+  flex: none;
+}
+
+#text-style-popover button {
+  flex: none;
+  border: none;
+  background: none;
+  color: #a9b1d6;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 12px;
+  line-height: 1;
+  font-family: inherit;
+}
+
+#text-style-popover button:not(.tsp-swatch):hover {
+  background: #3a3b50;
+  color: #fff;
+}
+
+#text-style-popover button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#text-style-popover button.active {
+  background: #4a90e2;
+  color: #fff;
+}
+
+.tsp-size-label {
+  min-width: 18px;
+  text-align: center;
+  color: #c0caf5;
+  font-size: 12px;
+}
+
+.tsp-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  padding: 0;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+}
+
+.tsp-swatch:hover {
+  border-color: #7aa2f7;
+}
+
+.tsp-swatch-white {
+  border-color: #55566e;
+}
+
+.tsp-swatch.active {
+  border-color: #4a90e2;
+}
+
+.tsp-bold {
+  font-weight: 700;
+}
+
+.tsp-align svg {
+  display: block;
+}
+
 /* ---- 通知トースト（容量超過・読み込み失敗などを alert の代わりに表示） ---- */
 #toast {
   position: fixed;

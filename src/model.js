@@ -112,7 +112,9 @@ const Model = (() => {
         style: {
           background: PALETTE[_colorIdx % PALETTE.length],
           fontSize: 14,
-          color: '#333333'
+          color: '#333333',
+          bold: false,
+          align: 'left'
         }
       };
       _colorIdx++;
@@ -133,7 +135,9 @@ const Model = (() => {
         content: '',
         style: {
           fontSize: 18,
-          color: '#333333'
+          color: '#333333',
+          bold: false,
+          align: 'left'
         }
       };
       _nodes.push(node);
@@ -154,7 +158,9 @@ const Model = (() => {
           background: '#ffffff',
           border: '#4a90e2',
           fontSize: 14,
-          color: '#333333'
+          color: '#333333',
+          bold: false,
+          align: 'center'
         }
       };
       _nodes.push(node);
@@ -199,6 +205,13 @@ const Model = (() => {
     updateContent(id, content) {
       const n = _nodes.find(n => n.id === id);
       if (n) n.content = content;
+    },
+
+    // 文字スタイル（fontSize / color / bold / align）の一部を更新する。
+    // style を持たないノード（画像など）は無視する
+    updateStyle(id, patch) {
+      const n = _nodes.find(n => n.id === id);
+      if (n && n.style) Object.assign(n.style, patch);
     },
 
     // ---- リンク（ノードごとに任意でひとつだけ持てるURL） ----
