@@ -4,13 +4,55 @@ const IO = (() => {
   const STORAGE_KEY = 'openboard_v01';
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
-  // align（left/center/right）から text-anchor と x座標を求める。
-  // pad は左揃え/右揃え時の余白（中央揃えでは使わない）
-  function alignXAnchor(align, x, width, pad) {
-    if (align === 'center') return { anchor: 'middle', x: x + width / 2 };
-    if (align === 'right') return { anchor: 'end', x: x + width - pad };
-    return { anchor: 'start', x: x + pad };
-  }
+  // 保存 SVG をブラウザで開いたときに画面と同じ見た目になるよう、style.css の該当規則（見た目に関わるものだけ）を転記している。
+  // style.css を変更したらここも揃えること。
+  const EXPORT_CSS = `
+svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.sticky-bg { filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.18)); }
+.shape-bg { filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.14)); }
+.image-el { filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.14)); }
+.sticky-fo, .shape-fo, .text-fo { overflow: visible; }
+.sticky-text {
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #333;
+  word-break: break-word;
+  overflow: hidden;
+}
+.shape-text-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shape-text {
+  text-align: center;
+  padding: 6px 10px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #333;
+  word-break: break-word;
+  min-width: 4px;
+}
+.text-content {
+  width: 100%;
+  height: 100%;
+  padding: 4px 6px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.4;
+  text-align: left;
+  word-break: break-word;
+  overflow: hidden;
+}
+.link-badge { font-size: 13px; }
+.resize-handle { display: none; }
+`;
 
   function buildData() {
     return {
@@ -90,6 +132,11 @@ const IO = (() => {
     meta.textContent = JSON.stringify(buildData());
     svg.appendChild(meta);
 
+    // 画面と同じ見た目にするための最小限のCSSを埋め込む
+    const style = document.createElementNS(SVG_NS, 'style');
+    style.textContent = EXPORT_CSS;
+    svg.appendChild(style);
+
     // 背景
     const bg = document.createElementNS(SVG_NS, 'rect');
     bg.setAttribute('x', minX);
@@ -150,121 +197,14 @@ const IO = (() => {
       svg.appendChild(path);
     });
 
-    // 各ノードをSVGネイティブ要素で描画（foreignObject不使用でビューア互換性を確保）
+    // 各ノードはキャンバスと同じ生成関数で作り、編集用のリサイズハンドルだけ取り除く。
+    // foreignObject + HTML をそのまま埋め込むので、文字の折り返し・余白・行間は画面と一致する
+    // （foreignObject 非対応のツールでは文字が出ないが、ブラウザ表示を優先する）。
     nodes.forEach(node => {
-      const g = document.createElementNS(SVG_NS, 'g');
-
-      if (node.type === 'sticky') {
-        const rect = document.createElementNS(SVG_NS, 'rect');
-        rect.setAttribute('x', node.x);
-        rect.setAttribute('y', node.y);
-        rect.setAttribute('width', node.width);
-        rect.setAttribute('height', node.height);
-        rect.setAttribute('rx', '6');
-        rect.setAttribute('fill', node.style.background);
-        g.appendChild(rect);
-
-        const bold = !!node.style.bold;
-        const align = node.style.align || 'left';
-        const { anchor, x: textX } = alignXAnchor(align, node.x, node.width, 12);
-        const lines = node.content ? node.content.split('\n') : [''];
-        const lineH = node.style.fontSize * 1.55;
-        lines.forEach((line, i) => {
-          const t = document.createElementNS(SVG_NS, 'text');
-          t.setAttribute('x', textX);
-          t.setAttribute('y', node.y + 14 + node.style.fontSize + i * lineH);
-          t.setAttribute('text-anchor', anchor);
-          t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
-          t.setAttribute('font-size', node.style.fontSize);
-          if (bold) t.setAttribute('font-weight', '700');
-          t.setAttribute('fill', node.style.color);
-          t.textContent = line;
-          g.appendChild(t);
-        });
-      } else if (node.type === 'shape') {
-        const { x, y, width: w, height: h, style: s } = node;
-        let bg;
-        if (node.shape === 'rect') {
-          bg = document.createElementNS(SVG_NS, 'rect');
-          bg.setAttribute('x', x); bg.setAttribute('y', y);
-          bg.setAttribute('width', w); bg.setAttribute('height', h);
-          bg.setAttribute('rx', '8');
-        } else if (node.shape === 'ellipse') {
-          bg = document.createElementNS(SVG_NS, 'ellipse');
-          bg.setAttribute('cx', x + w / 2); bg.setAttribute('cy', y + h / 2);
-          bg.setAttribute('rx', w / 2); bg.setAttribute('ry', h / 2);
-        } else {
-          bg = document.createElementNS(SVG_NS, 'polygon');
-          bg.setAttribute('points', `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`);
-        }
-        bg.setAttribute('fill', s.background);
-        bg.setAttribute('stroke', s.border);
-        bg.setAttribute('stroke-width', '2');
-        g.appendChild(bg);
-
-        if (node.content) {
-          const bold = !!s.bold;
-          const align = s.align || 'center';
-          const { anchor, x: textX } = alignXAnchor(align, x, w, 8);
-          const lines = node.content.split('\n');
-          const lineH = s.fontSize * 1.4;
-          const totalH = lines.length * lineH;
-          const baseY = y + h / 2 - totalH / 2 + s.fontSize * 0.85;
-          lines.forEach((line, i) => {
-            const t = document.createElementNS(SVG_NS, 'text');
-            t.setAttribute('x', textX);
-            t.setAttribute('y', baseY + i * lineH);
-            t.setAttribute('text-anchor', anchor);
-            t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
-            t.setAttribute('font-size', s.fontSize);
-            if (bold) t.setAttribute('font-weight', '700');
-            t.setAttribute('fill', s.color);
-            t.textContent = line;
-            g.appendChild(t);
-          });
-        }
-      } else if (node.type === 'text') {
-        // 背景・枠なし。左上寄せで折り返し済みの行をそのまま出力する
-        const bold = !!node.style.bold;
-        const align = node.style.align || 'left';
-        const padTop = 4, padLeft = 6;
-        const { anchor, x: textX } = alignXAnchor(align, node.x, node.width, padLeft);
-        const lines = node.content ? node.content.split('\n') : [''];
-        const lineH = node.style.fontSize * 1.4;
-        lines.forEach((line, i) => {
-          const t = document.createElementNS(SVG_NS, 'text');
-          t.setAttribute('x', textX);
-          t.setAttribute('y', node.y + padTop + node.style.fontSize * 0.9 + i * lineH);
-          t.setAttribute('text-anchor', anchor);
-          t.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
-          t.setAttribute('font-size', node.style.fontSize);
-          if (bold) t.setAttribute('font-weight', '700');
-          t.setAttribute('fill', node.style.color);
-          t.textContent = line;
-          g.appendChild(t);
-        });
-      } else if (node.type === 'image') {
-        const img = document.createElementNS(SVG_NS, 'image');
-        img.setAttribute('x', node.x);
-        img.setAttribute('y', node.y);
-        img.setAttribute('width', node.width);
-        img.setAttribute('height', node.height);
-        img.setAttribute('preserveAspectRatio', 'none');
-        img.setAttribute('href', node.src);
-        img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', node.src);
-        g.appendChild(img);
-      }
-
-      // リンクを持つノードには右上に🔗マークを添える（キャンバス上の表示と揃える）
+      const g = View.makeNodeEl(node);
+      if (!g) return;
+      g.querySelectorAll('.resize-handle').forEach(el => el.remove());
       if (node.link) {
-        const badge = document.createElementNS(SVG_NS, 'text');
-        badge.setAttribute('x', node.x + node.width - 6);
-        badge.setAttribute('y', node.y + 15);
-        badge.setAttribute('text-anchor', 'end');
-        badge.setAttribute('font-size', '13');
-        badge.textContent = '🔗';
-        g.appendChild(badge);
-
         // リンクがあるノードは <a> で包み、静的SVGをブラウザで開いてもクリックで別タブへ飛べるようにする
         const a = document.createElementNS(SVG_NS, 'a');
         a.setAttribute('href', node.link);

@@ -266,6 +266,15 @@ const View = (() => {
     return g;
   }
 
+  // node.type に応じて対応する make*El を呼び分ける（renderAll / addNode / IO.exportSVG 共通）
+  function makeNodeEl(node) {
+    if (node.type === 'sticky') return makeStickyEl(node);
+    if (node.type === 'shape') return makeShapeEl(node);
+    if (node.type === 'image') return makeImageEl(node);
+    if (node.type === 'text') return makeTextEl(node);
+    return null;
+  }
+
   // ---- コネクタ（エッジ）のSVG要素を生成 ----
 
   function markerId(color) {
@@ -518,10 +527,8 @@ const View = (() => {
     renderAll(nodes) {
       _canvas.querySelectorAll('.node').forEach(el => el.remove());
       nodes.forEach(n => {
-        if (n.type === 'sticky') _viewport.appendChild(makeStickyEl(n));
-        else if (n.type === 'shape') _viewport.appendChild(makeShapeEl(n));
-        else if (n.type === 'image') _viewport.appendChild(makeImageEl(n));
-        else if (n.type === 'text') _viewport.appendChild(makeTextEl(n));
+        const el = makeNodeEl(n);
+        if (el) _viewport.appendChild(el);
       });
       renderEdges(Model.getEdges());
       updateEmptyHint();
@@ -538,10 +545,8 @@ const View = (() => {
     },
 
     addNode(node) {
-      if (node.type === 'sticky') _viewport.appendChild(makeStickyEl(node));
-      else if (node.type === 'shape') _viewport.appendChild(makeShapeEl(node));
-      else if (node.type === 'image') _viewport.appendChild(makeImageEl(node));
-      else if (node.type === 'text') _viewport.appendChild(makeTextEl(node));
+      const el = makeNodeEl(node);
+      if (el) _viewport.appendChild(el);
       updateEmptyHint();
     },
 
@@ -702,6 +707,9 @@ const View = (() => {
       const div = el.querySelector('.sticky-text') || el.querySelector('.shape-text') || el.querySelector('.text-content');
       if (!fo || !div) return;
       startEditingEl(fo, div, onSave);
-    }
+    },
+
+    // IO.exportSVG から使う：保存するSVGがキャンバスと同じDOM（foreignObject等）になるよう公開する
+    makeNodeEl(node) { return makeNodeEl(node); }
   };
 })();
