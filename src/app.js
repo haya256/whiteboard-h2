@@ -669,26 +669,38 @@
 
   btnConnector.addEventListener('click', () => setConnectMode(!connectMode));
 
-  document.getElementById('btn-export').addEventListener('click', () => IO.exportSVG());
+  // SVGファイル（.svg）読み込み後の共通処理。File System Access API 経由・
+  // 従来の <input type="file"> 経由のどちらの「開く」からも呼ぶ
+  function loadBoardData(data, fileName) {
+    Model.setNodes(data.nodes || []);
+    Model.setEdges(data.edges || []);
+    View.renderAll(Model.getNodes());
+    View.selectNode(null);
+    View.selectEdge(null);
+    View.setViewport(data.viewport || { x: 0, y: 0, zoom: 1 });
+    updateZoomLabel();
+    // ボード名はファイル名を優先し、なければメタデータのタイトルを使う
+    const base = (fileName || '').replace(/\.svg$/i, '').trim();
+    Model.setTitle(base || data.meta?.title || '');
+    renderBoardName();
+    commit();
+    refreshTextStylePopover(); // 選択は解除済みのため閉じる
+  }
+
+  document.getElementById('btn-export').addEventListener('click', () => IO.exportSVG(renderBoardName));
+
+  // Chrome / Edge では File System Access API のダイアログで開く（フォルダを記憶してくれる）。
+  // 非対応ブラウザでは preventDefault しないので label の既定動作で <input type="file"> が開く。
+  document.getElementById('btn-import-label').addEventListener('click', e => {
+    if (!IO.hasFileSystemAccess()) return;
+    e.preventDefault();
+    IO.openSVG(loadBoardData);
+  });
 
   document.getElementById('btn-import').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
-    IO.importSVG(file, (data, fileName) => {
-      Model.setNodes(data.nodes || []);
-      Model.setEdges(data.edges || []);
-      View.renderAll(Model.getNodes());
-      View.selectNode(null);
-      View.selectEdge(null);
-      View.setViewport(data.viewport || { x: 0, y: 0, zoom: 1 });
-      updateZoomLabel();
-      // ボード名はファイル名を優先し、なければメタデータのタイトルを使う
-      const base = (fileName || '').replace(/\.svg$/i, '').trim();
-      Model.setTitle(base || data.meta?.title || '');
-      renderBoardName();
-      commit();
-      refreshTextStylePopover(); // 選択は解除済みのため閉じる
-    });
+    IO.importSVG(file, loadBoardData);
     e.target.value = '';
   });
 

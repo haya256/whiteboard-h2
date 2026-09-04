@@ -4,6 +4,15 @@ const IO = (() => {
   const STORAGE_KEY = 'openboard_v01';
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
+  // File System Access API（Chrome / Edge）用。同じ id を使うと「開く」「保存」で最後に使ったフォルダを
+  // ブラウザが記憶して共有してくれる。非対応ブラウザでは従来の input / ダウンロードにフォールバックする。
+  const PICKER_ID = 'openboard-svg';
+  const SVG_PICKER_TYPES = [{ description: 'SVG ボード', accept: { 'image/svg+xml': ['.svg'] } }];
+  function hasFileSystemAccess() {
+    return typeof window.showOpenFilePicker === 'function' && typeof window.showSaveFilePicker === 'function';
+  }
+  function stripSvgExt(name) { return String(name || '').replace(/\.svg$/i, '').trim(); }
+
   // 保存 SVG をブラウザで開いたときに画面と同じ見た目になるよう、style.css の該当規則（見た目に関わるものだけ）を転記している。
   // style.css を変更したらここも揃えること。
   const EXPORT_CSS = `
@@ -115,7 +124,7 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     }
   }
 
-  function exportSVG() {
+  function buildSVGString() {
     const nodes = Model.getNodes();
 
     // 全ノードを囲むバウンディングボックスを計算
@@ -226,13 +235,57 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
       }
     });
 
-    const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
+    return new XMLSerializer().serializeToString(svg);
+  }
+
+  // 従来どおり <a download> でブラウザにダウンロードさせる（File System Access API 非対応時のフォールバック）
+  function downloadSVG(text) {
+    const blob = new Blob([text], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = toFileName(Model.getTitle());
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // 保存ダイアログ（File System Access API）で保存する。対応ブラウザでは「開く」と同じ id を使うため
+  // 最後に保存/読み込みしたフォルダをブラウザが覚えていて、次回もそのフォルダが開く。
+  // onSaved はダイアログ経由の保存が成功したときのみ呼ばれる（フォールバック時は呼ばない）。
+  async function exportSVG(onSaved) {
+    if (!hasFileSystemAccess()) { downloadSVG(buildSVGString()); return; }
+
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        id: PICKER_ID,
+        suggestedName: toFileName(Model.getTitle()),
+        types: SVG_PICKER_TYPES
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') return; // キャンセル
+      showToast('保存ダイアログを開けませんでした: ' + err.message);
+      downloadSVG(buildSVGString());
+      return;
+    }
+
+    // ダイアログで付けたファイル名を先にボード名へ反映してから SVG を組み立てる
+    // （SVG 内のメタデータにも新しいタイトルが入るようにする。次回の保存名・タブ名にも使う）
+    const name = stripSvgExt(handle.name);
+    if (name) Model.setTitle(name);
+    const text = buildSVGString();
+
+    try {
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+    } catch (err) {
+      showToast('保存に失敗しました: ' + err.message);
+      return;
+    }
+
+    save();
+    if (typeof onSaved === 'function') onSaved();
   }
 
   function importSVG(file, onSuccess) {
@@ -252,5 +305,29 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     reader.readAsText(file);
   }
 
-  return { save, load, exportSVG, importSVG, showToast };
+  // 開くダイアログ（File System Access API）でSVGファイルを開く。
+  // 非対応ブラウザでは何もせず false を返す（呼び出し側で <input type="file"> にフォールバックする）。
+  // 対応ブラウザではダイアログを表示した時点（キャンセル含む）で true を返す。
+  async function openSVG(onSuccess) {
+    if (!hasFileSystemAccess()) return false;
+
+    let handle;
+    try {
+      [handle] = await window.showOpenFilePicker({ id: PICKER_ID, multiple: false, types: SVG_PICKER_TYPES });
+    } catch (err) {
+      if (err && err.name === 'AbortError') return true; // キャンセル
+      showToast('ファイルを開けませんでした: ' + err.message);
+      return true;
+    }
+
+    try {
+      const file = await handle.getFile();
+      importSVG(file, onSuccess);
+    } catch (err) {
+      showToast('ファイルを開けませんでした: ' + err.message);
+    }
+    return true;
+  }
+
+  return { save, load, exportSVG, importSVG, openSVG, hasFileSystemAccess, showToast };
 })();
