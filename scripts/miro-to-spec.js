@@ -83,6 +83,11 @@ const isBold = html => /^\s*(<p[^>]*>)?\s*<strong>[\s\S]*<\/strong>\s*(<\/p>)?\s
 
 // 付箋に収まる最大の文字サイズを段階から選ぶ（アプリの余白・行高で推定）
 const FONT_STEPS = [48, 32, 24, 18, 14, 12];
+function fitsAt(content, w, h, fs) {
+  const perLine = Math.max(1, Math.floor((w - 24) / fs));
+  const lines = content.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0);
+  return lines * fs * 1.55 <= h - 20;
+}
 function fitFontSize(content, w, h) {
   for (const fs of FONT_STEPS) {
     const perLine = Math.max(1, Math.floor((w - 24) / fs));
@@ -155,6 +160,14 @@ const arrowOf = cap => cap && cap !== 'none';
       };
       if (Math.abs(ratio - 1.5) < 0.15) { node.w = size; node.h = Math.round(size / 1.5); }
       else node.size = Math.round((w + h) / 2);
+      // Miro は極小の付箋でも文字を自動縮小して収めるが、アプリの最小文字は 12px。
+      // 12px でも収まらない場合は、収まる最小サイズまで付箋を（中心を保って）広げる
+      if (node.fontSize === 12 && !fitsAt(content, node.w || node.size, node.h || node.size, 12)) {
+        let sz = node.size || node.w;
+        while (sz < 400 && !fitsAt(content, sz, node.h ? Math.round(sz / 1.5) : sz, 12)) sz += 4;
+        if (node.size) node.size = sz; else { node.w = sz; node.h = Math.round(sz / 1.5); }
+        warnings.push(`付箋「${name}」は小さすぎて文字が収まらないため ${sz}px に広げました`);
+      }
       if (isBold(d.content)) node.bold = true;
       nodes.push(node); nameOfId.set(it.id, name);
     } else if (it.type === 'shape') {
