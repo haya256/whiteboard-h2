@@ -129,7 +129,7 @@ const Model = (() => {
         content: '',
         style: {
           background: STICKY_COLORS[0],
-          fontSize: 14,
+          fontSize: 32,
           color: '#333333',
           bold: false,
           align: 'center',
@@ -149,10 +149,10 @@ const Model = (() => {
         x: x != null ? x : 80 + Math.random() * 320,
         y: y != null ? y : 80 + Math.random() * 160,
         width: 240,
-        height: 40,
+        height: 56, // 既定フォント32px × 行高1.4 + 上下余白8px が収まる高さ
         content: '',
         style: {
-          fontSize: 18,
+          fontSize: 32,
           color: '#333333',
           bold: false,
           align: 'left'
@@ -175,7 +175,7 @@ const Model = (() => {
         style: {
           background: '#ffffff',
           border: '#4a90e2',
-          fontSize: 14,
+          fontSize: 32,
           color: '#333333',
           bold: false,
           align: 'center',
