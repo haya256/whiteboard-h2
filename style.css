@@ -606,6 +606,13 @@ html, body {
   display: block;
 }
 
+/* 付箋の縦横比ボタン（1:1 / 3:2） */
+.tsp-aspect {
+  font-size: 11px;
+  padding: 4px 6px;
+  letter-spacing: 0.3px;
+}
+
 /* ---- 通知トースト（容量超過・読み込み失敗などを alert の代わりに表示） ---- */
 #toast {
   position: fixed;

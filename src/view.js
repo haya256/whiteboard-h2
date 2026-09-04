@@ -77,8 +77,8 @@ const View = (() => {
     return map[dir];
   }
 
-  function makeResizeHandles(w, h) {
-    return HANDLE_DIRS.map(dir => {
+  function makeResizeHandles(w, h, dirs = HANDLE_DIRS) {
+    return dirs.map(dir => {
       const [hx, hy] = handlePos(dir, w, h);
       const el = document.createElementNS(SVG_NS, 'rect');
       el.classList.add('resize-handle');
@@ -152,6 +152,8 @@ const View = (() => {
     fo.appendChild(wrap);
     g.appendChild(rect);
     g.appendChild(fo);
+    // 付箋は縦横比固定でリサイズするため角ハンドルのみ出す
+    makeResizeHandles(node.width, node.height, ['nw', 'ne', 'se', 'sw']).forEach(el => g.appendChild(el));
     appendLinkBadgeIfNeeded(g, node);
     return g;
   }
@@ -613,8 +615,13 @@ const View = (() => {
         const fo = el.querySelector('.text-fo');
         if (frame) { frame.setAttribute('width', w); frame.setAttribute('height', h); }
         if (fo) { fo.setAttribute('width', w); fo.setAttribute('height', h); }
+      } else if (node.type === 'sticky') {
+        const bg = el.querySelector('.sticky-bg');
+        const fo = el.querySelector('.sticky-fo');
+        if (bg) { bg.setAttribute('width', w); bg.setAttribute('height', h); }
+        if (fo) { fo.setAttribute('width', w); fo.setAttribute('height', h); }
       } else {
-        return; // 付箋はリサイズ非対応
+        return;
       }
 
       repositionHandles(el, w, h);

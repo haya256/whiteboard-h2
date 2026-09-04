@@ -347,6 +347,7 @@
   const textStylePopover = document.getElementById('text-style-popover');
   textStylePopover.addEventListener('mousedown', e => e.stopPropagation());
 
+  const STICKY_ASPECTS = [{ label: '1:1', ratio: 1 }, { label: '3:2', ratio: 1.5 }]; // 付箋の縦横比（横/縦）
   const FONT_SIZE_STEPS = [12, 14, 18, 24, 32, 48];
   const TEXT_COLORS = ['#333333', '#757575', '#ffffff', '#e53935', '#fb8c00', '#43a047', '#1e88e5', '#8e24aa'];
   const ALIGN_LABELS = { left: '左揃え', center: '中央揃え', right: '右揃え' };
@@ -429,6 +430,22 @@
         bgGroup.appendChild(sw);
       });
       stickyRow.appendChild(bgGroup);
+
+      // ---- 縦横比（1:1 / 3:2）。保存項目は増やさず、現在の幅/高さから判定する ----
+      appendPopoverSeparator(stickyRow);
+      const aspectGroup = document.createElement('span');
+      aspectGroup.className = 'tsp-group';
+      const currentRatio = node.width / node.height;
+      STICKY_ASPECTS.forEach(({ label, ratio }) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tsp-aspect' + (Math.abs(currentRatio - ratio) < 0.02 ? ' active' : '');
+        btn.title = '縦横比 ' + label;
+        btn.textContent = label;
+        btn.addEventListener('click', ev => { ev.stopPropagation(); applyStickyAspect(node.id, ratio); });
+        aspectGroup.appendChild(btn);
+      });
+      stickyRow.appendChild(aspectGroup);
     }
 
     // ---- 文字設定の行（サイズ・色・太字・横位置） ----
@@ -577,6 +594,16 @@
       Model.updateSize(id, node.width, h);
       View.resizeNode(id, node.width, node.height);
     }
+  }
+
+  // 付箋の縦横比を変更する（幅を保ち高さを比率から決める）。ratio は 横/縦
+  function applyStickyAspect(id, ratio) {
+    const node = Model.findById(id);
+    if (!node || node.type !== 'sticky') return;
+    Model.updateSize(id, node.width, Math.round(node.width / ratio));
+    View.resizeNode(id, node.width, node.height);
+    commit();
+    refreshTextStylePopover();
   }
 
   // ポップオーバーの各ボタン共通の適用処理：Model更新→View反映→（テキストのみ）高さ追従→履歴確定→再表示
@@ -905,6 +932,9 @@
         nh = Math.max(MIN_SIZE, nh);
         nw = nh * aspect;
       }
+      // 従属側が最小サイズを下回る場合は従属側を最小にして主側を比率から再計算する（比率を崩さない）
+      if (nh < MIN_SIZE) { nh = MIN_SIZE; nw = nh * aspect; }
+      if (nw < MIN_SIZE) { nw = MIN_SIZE; nh = nw / aspect; }
       x = dir.includes('w') ? oX + oW - nw : oX;
       y = dir.includes('n') ? oY + oH - nh : oY;
       return { x, y, w: nw, h: nh };
@@ -936,7 +966,7 @@
     if (resize) {
       const dx = pt.x - resize.startX;
       const dy = pt.y - resize.startY;
-      const { x, y, w, h } = calcResize(resize.dir, dx, dy, resize.origX, resize.origY, resize.origW, resize.origH, e.shiftKey);
+      const { x, y, w, h } = calcResize(resize.dir, dx, dy, resize.origX, resize.origY, resize.origW, resize.origH, e.shiftKey || resize.lockAspect);
       Model.updatePosition(resize.id, x, y);
       Model.updateSize(resize.id, w, h);
       View.moveNode(resize.id, x, y);
@@ -1066,7 +1096,8 @@
         id, dir: handleEl.dataset.dir,
         startX: pt.x, startY: pt.y,
         origX: node.x, origY: node.y,
-        origW: node.width, origH: node.height
+        origW: node.width, origH: node.height,
+        lockAspect: node.type === 'sticky' // 付箋は常に縦横比固定
       };
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
