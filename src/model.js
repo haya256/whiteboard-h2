@@ -1,9 +1,13 @@
 'use strict';
 
 const Model = (() => {
-  const PALETTE = [
-    '#FFEB3B', '#FFD54F', '#FFCC80', '#A5D6A7',
-    '#90CAF9', '#CE93D8', '#F48FB1', '#80DEEA'
+  // 付箋の背景色の選択肢（黄・ピンク・水色・緑・紫の定番5色）。先頭が既定色（黄色）。
+  const STICKY_COLORS = [
+    '#FFF275', // 黄色（カナリアイエロー）
+    '#FF7EB9', // ピンク（エレクトリックピンク）
+    '#7AFCFF', // 水色（アクアブルー）
+    '#A7F3D0', // 緑（ミントグリーン）
+    '#E2B0FF'  // 紫（パステルパープル）
   ];
 
   const DEFAULT_TITLE = '無題のボード';
@@ -12,7 +16,6 @@ const Model = (() => {
   let _edges = [];
   let _selectedIds = new Set(); // 複数選択中のノードID集合
   let _selectedEdgeId = null;
-  let _colorIdx = 0;
   // ボード名。ファイル名・タブ名に使う。Undo 履歴の対象外。
   let _title = DEFAULT_TITLE;
 
@@ -53,6 +56,8 @@ const Model = (() => {
 
   return {
     getNodes: () => _nodes,
+    // 付箋の背景色の選択肢一覧（複製を返す）
+    getStickyColors: () => STICKY_COLORS.slice(),
     getEdges: () => _edges,
     // 後方互換：単一選択時のみIDを返す。複数選択・未選択時は null
     getSelectedId: () => (_selectedIds.size === 1 ? Array.from(_selectedIds)[0] : null),
@@ -123,14 +128,13 @@ const Model = (() => {
         height: 200,
         content: '',
         style: {
-          background: PALETTE[_colorIdx % PALETTE.length],
+          background: STICKY_COLORS[0],
           fontSize: 14,
           color: '#333333',
           bold: false,
           align: 'left'
         }
       };
-      _colorIdx++;
       _nodes.push(node);
       return node;
     },

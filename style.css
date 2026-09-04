@@ -483,8 +483,9 @@ html, body {
 #text-style-popover {
   position: fixed;
   display: none;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column; /* 「付箋」「文字」の行を縦に並べる */
+  align-items: stretch;
+  gap: 4px;
   background: #1a1b26;
   border-radius: 8px;
   padding: 6px 8px;
@@ -496,6 +497,21 @@ html, body {
 
 #text-style-popover.open {
   display: flex;
+}
+
+/* ポップオーバーの1行。行頭のラベルで「付箋の色」と「文字設定」を見分けられるようにする */
+.tsp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tsp-row-label {
+  flex: none;
+  min-width: 28px;
+  font-size: 11px;
+  color: #7a82a6;
+  user-select: none;
 }
 
 .tsp-group {
@@ -566,6 +582,11 @@ html, body {
 
 .tsp-swatch.active {
   border-color: #4a90e2;
+}
+
+/* 付箋の背景色スウォッチは文字色（丸）と区別するため角丸四角にする */
+.tsp-swatch-bg {
+  border-radius: 4px;
 }
 
 .tsp-bold {

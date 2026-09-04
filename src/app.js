@@ -362,10 +362,22 @@
     textStylePopover.innerHTML = '';
   }
 
-  function appendPopoverSeparator() {
+  function appendPopoverSeparator(container) {
     const sep = document.createElement('span');
     sep.className = 'tsp-sep';
-    textStylePopover.appendChild(sep);
+    container.appendChild(sep);
+  }
+
+  // ポップオーバーの1行（行頭にラベルを付ける）。付箋の色と文字設定を別の行に分けて見分けやすくする
+  function appendPopoverRow(labelText) {
+    const row = document.createElement('div');
+    row.className = 'tsp-row';
+    const label = document.createElement('span');
+    label.className = 'tsp-row-label';
+    label.textContent = labelText;
+    row.appendChild(label);
+    textStylePopover.appendChild(row);
+    return row;
   }
 
   // ノードの上、画面上端に収まらない場合はノードの下（リンクポップオーバーと同じ位置）に回す
@@ -389,6 +401,31 @@
     const bold = !!style.bold;
     const align = style.align || (node.type === 'shape' ? 'center' : 'left');
     const color = (style.color || '#333333').toLowerCase();
+
+    // ---- 付箋の色（付箋のみ、1行目）。文字色（丸）と区別するため角丸四角のスウォッチにする ----
+    if (node.type === 'sticky') {
+      const stickyRow = appendPopoverRow('付箋');
+      const bgGroup = document.createElement('span');
+      bgGroup.className = 'tsp-group tsp-bg-colors';
+      const currentBg = (style.background || '').toLowerCase();
+      Model.getStickyColors().forEach(c => {
+        const sw = document.createElement('button');
+        sw.type = 'button';
+        sw.className = 'tsp-swatch tsp-swatch-bg';
+        if (c.toLowerCase() === currentBg) sw.classList.add('active');
+        sw.style.background = c;
+        sw.title = '付箋の色';
+        sw.addEventListener('click', ev => {
+          ev.stopPropagation();
+          applyStylePatch(node.id, { background: c });
+        });
+        bgGroup.appendChild(sw);
+      });
+      stickyRow.appendChild(bgGroup);
+    }
+
+    // ---- 文字設定の行（サイズ・色・太字・横位置） ----
+    const textRow = appendPopoverRow('文字');
 
     // ---- 文字サイズ ----
     const sizeGroup = document.createElement('span');
@@ -434,9 +471,9 @@
     sizeGroup.appendChild(minusBtn);
     sizeGroup.appendChild(sizeLabel);
     sizeGroup.appendChild(plusBtn);
-    textStylePopover.appendChild(sizeGroup);
+    textRow.appendChild(sizeGroup);
 
-    appendPopoverSeparator();
+    appendPopoverSeparator(textRow);
 
     // ---- 文字色（8色パレット） ----
     const colorGroup = document.createElement('span');
@@ -455,9 +492,9 @@
       });
       colorGroup.appendChild(sw);
     });
-    textStylePopover.appendChild(colorGroup);
+    textRow.appendChild(colorGroup);
 
-    appendPopoverSeparator();
+    appendPopoverSeparator(textRow);
 
     // ---- 太字 ----
     const boldBtn = document.createElement('button');
@@ -469,7 +506,7 @@
       ev.stopPropagation();
       applyStylePatch(node.id, { bold: !bold });
     });
-    textStylePopover.appendChild(boldBtn);
+    textRow.appendChild(boldBtn);
 
     // ---- 横位置（左/中央/右） ----
     const alignGroup = document.createElement('span');
@@ -486,7 +523,7 @@
       });
       alignGroup.appendChild(btn);
     });
-    textStylePopover.appendChild(alignGroup);
+    textRow.appendChild(alignGroup);
   }
 
   // 選択が「1ノードだけ・画像以外・編集中でない・ドラッグ/リサイズ中でない」なら

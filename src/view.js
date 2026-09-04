@@ -681,12 +681,25 @@ const View = (() => {
       }
     },
 
-    // node.style（fontSize / color / bold / align）の変更を既存要素へ反映する
-    // （テキストスタイル編集ポップオーバーの各ボタンから呼ばれる）
+    // node.style（fontSize / color / bold / align / 背景色）の変更を既存要素へ反映する
+    // （テキストスタイル編集ポップオーバーの各ボタンから呼ばれる。
+    //  付箋の背景・図形の塗り/枠線も反映する）
     updateNodeStyle(node) {
       if (!node) return;
       const el = _canvas.querySelector(`[data-id="${node.id}"]`);
       if (!el) return;
+
+      if (node.type === 'sticky') {
+        const bg = el.querySelector('.sticky-bg');
+        if (bg && node.style.background) bg.setAttribute('fill', node.style.background);
+      } else if (node.type === 'shape') {
+        const bg = el.querySelector('.shape-bg');
+        if (bg) {
+          if (node.style.background) bg.setAttribute('fill', node.style.background);
+          if (node.style.border) bg.setAttribute('stroke', node.style.border);
+        }
+      }
+
       const div = el.querySelector('.sticky-text') || el.querySelector('.shape-text') || el.querySelector('.text-content');
       if (!div) return;
       const defaultAlign = node.type === 'shape' ? 'center' : 'left';
