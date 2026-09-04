@@ -324,7 +324,7 @@ const View = (() => {
     return id;
   }
 
-  // 2ノードから、アンカー自動選択済みの端点座標を計算する
+  // 2ノードから、アンカー自動選択済みの端点座標を計算する（アンカー名 a/b も返す。曲線・直角の向き決めに使う）
   function edgeEndpoints(edge) {
     const from = Model.findById(edge.from);
     const to = Model.findById(edge.to);
@@ -333,16 +333,53 @@ const View = (() => {
     const { a, b } = Model.pickAnchors(from, to);
     const p1 = Model.getAnchors(from)[a];
     const p2 = Model.getAnchors(to)[b];
-    return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, a, b };
   }
 
-  function pathD(pts) {
-    return `M${pts.x1},${pts.y1} L${pts.x2},${pts.y2}`;
+  // アンカー名（right/left/top/bottom）から、そのアンカーの外向き方向へのオフセットを返す（曲線の制御点用）
+  function anchorOffset(anchorName, off) {
+    if (anchorName === 'right') return { dx: off, dy: 0 };
+    if (anchorName === 'left') return { dx: -off, dy: 0 };
+    if (anchorName === 'bottom') return { dx: 0, dy: off };
+    if (anchorName === 'top') return { dx: 0, dy: -off };
+    return { dx: 0, dy: 0 };
+  }
+
+  // エッジの経路（path の d 属性）を線種（style.line）に応じて計算する。
+  // 旧データ（line 未設定）は 'straight' 扱い。
+  function edgePathD(edge) {
+    const pts = edgeEndpoints(edge);
+    if (!pts) return '';
+    const { x1, y1, x2, y2, a, b } = pts;
+    const line = (edge.style && edge.style.line) || 'straight';
+
+    if (line === 'curved') {
+      // 各端点からアンカーの外向きに離した制御点を置く3次ベジェ
+      const dist = Math.hypot(x2 - x1, y2 - y1);
+      const off = Math.max(40, dist * 0.4);
+      const oa = anchorOffset(a, off);
+      const ob = anchorOffset(b, off);
+      const cx1 = x1 + oa.dx, cy1 = y1 + oa.dy;
+      const cx2 = x2 + ob.dx, cy2 = y2 + ob.dy;
+      return `M${x1},${y1} C${cx1},${cy1} ${cx2},${cy2} ${x2},${y2}`;
+    }
+
+    if (line === 'elbow') {
+      // アンカーが左右なら縦の中間線で折れ、上下なら横の中間線で折れる
+      if (a === 'left' || a === 'right') {
+        const midX = (x1 + x2) / 2;
+        return `M${x1},${y1} L${midX},${y1} L${midX},${y2} L${x2},${y2}`;
+      }
+      const midY = (y1 + y2) / 2;
+      return `M${x1},${y1} L${x1},${midY} L${x2},${midY} L${x2},${y2}`;
+    }
+
+    return `M${x1},${y1} L${x2},${y2}`;
   }
 
   function makeEdgeEl(edge) {
-    const pts = edgeEndpoints(edge);
-    if (!pts) return null;
+    const d = edgePathD(edge);
+    if (!d) return null;
 
     const g = document.createElementNS(SVG_NS, 'g');
     g.classList.add('edge');
@@ -351,21 +388,23 @@ const View = (() => {
     // クリック判定用の透明な太い線（見た目には出ない）
     const hit = document.createElementNS(SVG_NS, 'path');
     hit.classList.add('edge-hit');
-    hit.setAttribute('d', pathD(pts));
+    hit.setAttribute('d', d);
 
     // 実際に見える線
     const line = document.createElementNS(SVG_NS, 'path');
     line.classList.add('edge-line');
-    line.setAttribute('d', pathD(pts));
+    line.setAttribute('d', d);
     line.setAttribute('stroke', edge.style.color);
     line.setAttribute('stroke-width', edge.style.width);
 
-    const mid = ensureMarker(edge.style.color);
-    if (edge.style.arrow === 'end' || edge.style.arrow === 'both') {
-      line.setAttribute('marker-end', `url(#${mid})`);
-    }
-    if (edge.style.arrow === 'start' || edge.style.arrow === 'both') {
-      line.setAttribute('marker-start', `url(#${mid})`);
+    if (edge.style.arrow !== 'none') {
+      const mid = ensureMarker(edge.style.color);
+      if (edge.style.arrow === 'end' || edge.style.arrow === 'both') {
+        line.setAttribute('marker-end', `url(#${mid})`);
+      }
+      if (edge.style.arrow === 'start' || edge.style.arrow === 'both') {
+        line.setAttribute('marker-start', `url(#${mid})`);
+      }
     }
 
     g.appendChild(hit);
@@ -388,9 +427,8 @@ const View = (() => {
       if (edge.from !== nodeId && edge.to !== nodeId) return;
       const el = layer.querySelector(`[data-id="${edge.id}"]`);
       if (!el) return;
-      const pts = edgeEndpoints(edge);
-      if (!pts) return;
-      const d = pathD(pts);
+      const d = edgePathD(edge);
+      if (!d) return;
       el.querySelector('.edge-hit').setAttribute('d', d);
       el.querySelector('.edge-line').setAttribute('d', d);
     });
@@ -688,6 +726,46 @@ const View = (() => {
 
     updateEdgesFor(id) {
       updateEdgesFor(id);
+    },
+
+    // エッジの経路計算を外部（io.js の書き出し）と共用するために公開する
+    edgePathD(edge) { return edgePathD(edge); },
+
+    // エッジの見た目の線の外接矩形（ワールド座標）。曲線・直角も含めた実際の形から取る。
+    // エッジ用ポップオーバーを線と重ならない位置に置くために使う
+    edgeBBox(edge) {
+      const line = _canvas.querySelector(`.edge[data-id="${edge.id}"] .edge-line`);
+      if (!line) return null;
+      const b = line.getBBox();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+
+    // エッジのスタイル変更を既存要素にその場で反映する（選択状態を維持するため remove+add はしない）
+    updateEdgeStyle(edge) {
+      if (!edge) return;
+      const el = _canvas.querySelector(`.edge[data-id="${edge.id}"]`);
+      if (!el) return;
+      const d = edgePathD(edge);
+      const hit = el.querySelector('.edge-hit');
+      const line = el.querySelector('.edge-line');
+      if (hit) hit.setAttribute('d', d);
+      if (!line) return;
+      line.setAttribute('d', d);
+      line.setAttribute('stroke', edge.style.color);
+      line.setAttribute('stroke-width', edge.style.width);
+
+      if (edge.style.arrow === 'end' || edge.style.arrow === 'both') {
+        const mid = ensureMarker(edge.style.color);
+        line.setAttribute('marker-end', `url(#${mid})`);
+      } else {
+        line.removeAttribute('marker-end');
+      }
+      if (edge.style.arrow === 'start' || edge.style.arrow === 'both') {
+        const mid = ensureMarker(edge.style.color);
+        line.setAttribute('marker-start', `url(#${mid})`);
+      } else {
+        line.removeAttribute('marker-start');
+      }
     },
 
     // node.link の有無に合わせてリンクバッジ（右上の🔗マーク）を追加/更新/削除する

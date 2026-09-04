@@ -200,22 +200,20 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
       const to = Model.findById(edge.to);
       if (!from || !to) return;
 
-      const { a, b } = Model.pickAnchors(from, to);
-      const p1 = Model.getAnchors(from)[a];
-      const p2 = Model.getAnchors(to)[b];
-
       const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', `M${p1.x},${p1.y} L${p2.x},${p2.y}`);
+      path.setAttribute('d', View.edgePathD(edge));
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', edge.style.color);
       path.setAttribute('stroke-width', edge.style.width);
 
-      const mid = ensureMarker(edge.style.color);
-      if (edge.style.arrow === 'end' || edge.style.arrow === 'both') {
-        path.setAttribute('marker-end', `url(#${mid})`);
-      }
-      if (edge.style.arrow === 'start' || edge.style.arrow === 'both') {
-        path.setAttribute('marker-start', `url(#${mid})`);
+      if (edge.style.arrow !== 'none') {
+        const mid = ensureMarker(edge.style.color);
+        if (edge.style.arrow === 'end' || edge.style.arrow === 'both') {
+          path.setAttribute('marker-end', `url(#${mid})`);
+        }
+        if (edge.style.arrow === 'start' || edge.style.arrow === 'both') {
+          path.setAttribute('marker-start', `url(#${mid})`);
+        }
       }
 
       svg.appendChild(path);

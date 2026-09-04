@@ -365,6 +365,28 @@
     bottom: '<svg viewBox="0 0 14 14" width="14" height="14"><rect x="2" y="2" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="8" width="6" height="2.5" fill="currentColor" stroke="none"/></svg>'
   };
 
+  // ---- コネクタ（エッジ）用スタイル定数 ----
+  const EDGE_LINE_TYPES = ['straight', 'curved', 'elbow'];
+  const EDGE_LINE_LABELS = { straight: '直線', curved: '曲線', elbow: '直角' };
+  const EDGE_LINE_ICONS = {
+    straight: '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M2,12 L12,2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    curved: '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M2,12 C6,12 8,2 12,2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    elbow: '<svg viewBox="0 0 14 14" width="14" height="14"><polyline points="2,12 7,12 7,2 12,2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+
+  const EDGE_ARROWS = ['none', 'end', 'start', 'both'];
+  const EDGE_ARROW_LABELS = { none: '矢印なし', end: '終点に矢印', start: '始点に矢印', both: '両端に矢印' };
+  const EDGE_ARROW_ICONS = {
+    none: '<svg viewBox="0 0 14 14" width="14" height="14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    end: '<svg viewBox="0 0 14 14" width="14" height="14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><polyline points="9,4 12,7 9,10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    start: '<svg viewBox="0 0 14 14" width="14" height="14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><polyline points="5,4 2,7 5,10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    both: '<svg viewBox="0 0 14 14" width="14" height="14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><polyline points="9,4 12,7 9,10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><polyline points="5,4 2,7 5,10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+
+  const EDGE_WIDTHS = [{ label: '細', value: 1 }, { label: '中', value: 2 }, { label: '太', value: 4 }];
+  // 背景（点グリッド）に溶けて見えなくなるため、文字色パレットから白を除いたものを使う
+  const EDGE_COLORS = TEXT_COLORS.filter(c => c !== '#ffffff');
+
   function closeTextStylePopover() {
     textStylePopover.classList.remove('open');
     textStylePopover.innerHTML = '';
@@ -571,10 +593,143 @@
     }
   }
 
+  // コネクタ用ポップオーバーを、線（外接矩形 bbox。ワールド座標）と重ならない位置に配置する。
+  // 横長のコネクタは矩形の上（上に収まらなければ下）、縦長のコネクタは矩形の右（右に収まらなければ左）に置く。
+  function positionPopoverBesideEdge(bbox) {
+    const tl = View.worldToScreen(bbox.x, bbox.y);
+    const br = View.worldToScreen(bbox.x + bbox.width, bbox.y + bbox.height);
+    const w = textStylePopover.offsetWidth;
+    const h = textStylePopover.offsetHeight;
+    const GAP = 12;
+    const TOP_LIMIT = 56; // ツールバー（52px）の下に収める
+    let x, y;
+    if (br.y - tl.y > br.x - tl.x) {
+      // 縦長：右側に縦中央揃え
+      x = br.x + GAP;
+      y = (tl.y + br.y) / 2 - h / 2;
+      if (x + w > window.innerWidth - 4) x = tl.x - w - GAP;
+    } else {
+      // 横長：上側に水平中央揃え
+      x = (tl.x + br.x) / 2 - w / 2;
+      y = tl.y - h - GAP;
+      if (y < TOP_LIMIT) y = br.y + GAP;
+    }
+    x = Math.min(Math.max(x, 4), window.innerWidth - w - 4);
+    y = Math.min(Math.max(y, TOP_LIMIT), window.innerHeight - h - 4);
+    textStylePopover.style.left = Math.round(x) + 'px';
+    textStylePopover.style.top = Math.round(y) + 'px';
+  }
+
+  // コネクタ用ポップオーバーの中身を生成する（線種・矢印・太さ / 色）
+  function buildEdgeStylePopover(edge) {
+    textStylePopover.innerHTML = '';
+    const s = edge.style || {};
+    const currentLine = s.line || 'straight';
+    const currentColor = (s.color || '#333333').toLowerCase();
+
+    // ---- 行「線」：線種 / 矢印の向き / 太さ ----
+    const lineRow = appendPopoverRow('線');
+
+    const lineGroup = document.createElement('span');
+    lineGroup.className = 'tsp-group';
+    EDGE_LINE_TYPES.forEach(t => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tsp-line' + (currentLine === t ? ' active' : '');
+      btn.title = EDGE_LINE_LABELS[t];
+      btn.innerHTML = EDGE_LINE_ICONS[t];
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        applyEdgeStylePatch(edge.id, { line: t });
+      });
+      lineGroup.appendChild(btn);
+    });
+    lineRow.appendChild(lineGroup);
+
+    appendPopoverSeparator(lineRow);
+
+    const arrowGroup = document.createElement('span');
+    arrowGroup.className = 'tsp-group';
+    EDGE_ARROWS.forEach(a => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tsp-arrow' + (s.arrow === a ? ' active' : '');
+      btn.title = EDGE_ARROW_LABELS[a];
+      btn.innerHTML = EDGE_ARROW_ICONS[a];
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        applyEdgeStylePatch(edge.id, { arrow: a });
+      });
+      arrowGroup.appendChild(btn);
+    });
+    lineRow.appendChild(arrowGroup);
+
+    appendPopoverSeparator(lineRow);
+
+    const widthGroup = document.createElement('span');
+    widthGroup.className = 'tsp-group';
+    EDGE_WIDTHS.forEach(({ label, value }) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tsp-width' + (s.width === value ? ' active' : '');
+      btn.title = '太さ ' + value;
+      btn.textContent = label;
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        applyEdgeStylePatch(edge.id, { width: value });
+      });
+      widthGroup.appendChild(btn);
+    });
+    lineRow.appendChild(widthGroup);
+
+    // ---- 行「色」 ----
+    const colorRow = appendPopoverRow('色');
+    const colorGroup = document.createElement('span');
+    colorGroup.className = 'tsp-group tsp-colors';
+    EDGE_COLORS.forEach(c => {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'tsp-swatch';
+      if (c.toLowerCase() === currentColor) sw.classList.add('active');
+      sw.style.background = c;
+      sw.title = c;
+      sw.addEventListener('click', ev => {
+        ev.stopPropagation();
+        applyEdgeStylePatch(edge.id, { color: c });
+      });
+      colorGroup.appendChild(sw);
+    });
+    colorRow.appendChild(colorGroup);
+  }
+
+  // コネクタのポップオーバーの各ボタン共通の適用処理：Model更新→View反映→履歴確定→再表示
+  function applyEdgeStylePatch(id, patch) {
+    const edge = Model.findEdgeById(id);
+    if (!edge) return;
+    Model.updateEdgeStyle(id, patch);
+    View.updateEdgeStyle(edge);
+    commit();
+    refreshTextStylePopover();
+  }
+
   // 選択が「1ノードだけ・画像以外・編集中でない・ドラッグ/リサイズ中でない」なら
-  // ポップオーバーを生成・配置して表示、それ以外は閉じる。
+  // ノード用ポップオーバーを生成・配置して表示、コネクタが選択中ならコネクタ用ポップオーバーを表示、
+  // それ以外は閉じる（ノードとコネクタのスタイル編集を1つのポップオーバー要素で兼用する）。
   // 選択確定・ズーム・パン終了・移動/リサイズ終了・スタイル変更後など、幅広い箇所から呼ぶ。
   function refreshTextStylePopover() {
+    // コネクタ選択中はコネクタ用の内容を出す（ノードとコネクタの選択は排他）
+    const edgeId = Model.getSelectedEdgeId();
+    if (edgeId && !editing && !drag && !resize) {
+      const edge = Model.findEdgeById(edgeId);
+      if (edge) {
+        buildEdgeStylePopover(edge);
+        textStylePopover.classList.add('open');
+        const bbox = View.edgeBBox(edge);
+        if (bbox) positionPopoverBesideEdge(bbox); else closeTextStylePopover();
+        return;
+      }
+    }
+
     const ids = Model.getSelectedIds();
     if (ids.length !== 1 || editing || drag || resize) { closeTextStylePopover(); return; }
     const node = Model.findById(ids[0]);
@@ -1112,7 +1267,10 @@
       Model.selectEdge(id);
       View.selectNode(null);
       View.selectEdge(id);
-      refreshTextStylePopover(); // ノード選択が解除されるため閉じる
+      // ここ（mousedown）で開くと、直後に document 側の「外側クリックで閉じる」mousedown 処理に閉じられて
+      // しまうため、ノードと同様に mouseup のタイミングでコネクタ用ポップオーバーを開く
+      closeTextStylePopover();
+      document.addEventListener('mouseup', () => refreshTextStylePopover(), { once: true });
       return;
     }
 

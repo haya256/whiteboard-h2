@@ -370,9 +370,10 @@ html, body {
   cursor: pointer;
 }
 
-.edge.selected .edge-line {
-  stroke: #4a90e2 !important;
-  stroke-width: 3 !important;
+/* 選択中は太い当たり判定パス（.edge-hit）を淡い青のハイライトとして見せる。
+   線自体（.edge-line）の色・太さは変えない（スタイル変更結果が選択中も見えるようにするため） */
+.edge.selected .edge-hit {
+  stroke: rgba(74, 144, 226, 0.28);
 }
 
 /* ---- 右クリックメニュー（重なり順の変更・削除） ---- */
@@ -603,6 +604,10 @@ html, body {
 }
 
 .tsp-align svg {
+  display: block;
+}
+
+.tsp-line svg, .tsp-arrow svg {
   display: block;
 }
 

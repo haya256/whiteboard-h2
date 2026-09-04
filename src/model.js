@@ -233,6 +233,12 @@ const Model = (() => {
       if (n && n.style) Object.assign(n.style, patch);
     },
 
+    // コネクタのスタイル（line / arrow / color / width）の一部を更新する
+    updateEdgeStyle(id, patch) {
+      const e = _edges.find(e => e.id === id);
+      if (e && e.style) Object.assign(e.style, patch);
+    },
+
     // ---- リンク（ノードごとに任意でひとつだけ持てるURL） ----
     // 未設定のノードは link フィールド自体を持たない（JSON出力・比較を単純にするため）。
 
