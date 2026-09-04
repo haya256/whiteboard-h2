@@ -21,3 +21,6 @@ data/
 # Next.js ビルド成果物（Deploy Now 用。public/ はビルド時に生成されるコピー）
 .next/
 public/
+
+# ロリポップ！デプロイナウ関連
+.lolipop/
