@@ -37,15 +37,26 @@ const View = (() => {
     return text;
   }
 
-  // ---- 文字の見た目（サイズ・色・太字・横位置）をインラインで適用する共通ヘルパー ----
-  // 旧データ（bold / align を持たない）はここで既定値にフォールバックする。
+  // 縦位置（valign）→ flexラッパーの align-items 値への変換
+  const VALIGN_TO_FLEX = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
+
+  // ---- 文字の見た目（サイズ・色・太字・横位置・縦位置）をインラインで適用する共通ヘルパー ----
+  // 旧データ（bold / align / valign を持たない）はここで既定値にフォールバックする。
   // defaultAlign はノード種別ごとの既定横位置（text・sticky は 'left'、shape は 'center'）
-  function applyTextStyle(div, style, defaultAlign) {
+  // defaultValign はノード種別ごとの既定縦位置（sticky は 'top'、shape は 'middle'）
+  function applyTextStyle(div, style, defaultAlign, defaultValign) {
     const s = style || {};
     div.style.fontSize = (s.fontSize || 14) + 'px';
     div.style.color = s.color || '#333333';
     div.style.fontWeight = s.bold ? '700' : '';
     div.style.textAlign = s.align || defaultAlign || 'left';
+
+    // 縦位置：文字divを包む flex ラッパー（.text-valign-wrap）の align-items で制御する。
+    // ラッパーが無いテキストノードでは何もしない。
+    const wrap = div.parentElement;
+    if (wrap && wrap.classList && wrap.classList.contains('text-valign-wrap')) {
+      wrap.style.alignItems = VALIGN_TO_FLEX[s.valign] || VALIGN_TO_FLEX[defaultValign] || 'flex-start';
+    }
   }
 
   // ---- リサイズハンドル ----
@@ -128,12 +139,17 @@ const View = (() => {
     fo.setAttribute('width', node.width);
     fo.setAttribute('height', node.height);
 
+    const wrap = document.createElementNS(XHTML_NS, 'div');
+    wrap.className = 'sticky-text-wrap text-valign-wrap';
+
     const div = document.createElementNS(XHTML_NS, 'div');
     div.classList.add('sticky-text');
     setTextContent(div, node.content);
-    applyTextStyle(div, node.style, 'left');
 
-    fo.appendChild(div);
+    wrap.appendChild(div);
+    applyTextStyle(div, node.style, 'left', 'top');
+
+    fo.appendChild(wrap);
     g.appendChild(rect);
     g.appendChild(fo);
     appendLinkBadgeIfNeeded(g, node);
@@ -183,14 +199,14 @@ const View = (() => {
     fo.setAttribute('height', h);
 
     const wrap = document.createElementNS(XHTML_NS, 'div');
-    wrap.className = 'shape-text-wrap';
+    wrap.className = 'shape-text-wrap text-valign-wrap';
 
     const div = document.createElementNS(XHTML_NS, 'div');
     div.className = 'shape-text';
     setTextContent(div, node.content);
-    applyTextStyle(div, node.style, 'center');
 
     wrap.appendChild(div);
+    applyTextStyle(div, node.style, 'center', 'middle');
     fo.appendChild(wrap);
     g.appendChild(fo);
 
@@ -703,7 +719,8 @@ const View = (() => {
       const div = el.querySelector('.sticky-text') || el.querySelector('.shape-text') || el.querySelector('.text-content');
       if (!div) return;
       const defaultAlign = node.type === 'shape' ? 'center' : 'left';
-      applyTextStyle(div, node.style, defaultAlign);
+      const defaultValign = node.type === 'shape' ? 'middle' : 'top';
+      applyTextStyle(div, node.style, defaultAlign, defaultValign);
     },
 
     // テキストノードの文字divの実測高さを返す（サイズ変更後の自動高さ調整用）

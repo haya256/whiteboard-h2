@@ -180,9 +180,17 @@ html, body {
   overflow: visible;
 }
 
-.sticky-text {
+/* 文字divを包む flex ラッパー。縦位置（上/中/下）は align-items をインラインで指定する */
+.sticky-text-wrap {
   width: 100%;
   height: 100%;
+  display: flex;
+  overflow: hidden;
+}
+
+.sticky-text {
+  width: 100%;
+  max-height: 100%;
   padding: 10px 12px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
@@ -223,10 +231,11 @@ html, body {
   height: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* 横位置は内側の .shape-text の text-align で制御する */
 }
 
 .shape-text {
+  width: 100%;
   text-align: center;
   padding: 6px 10px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

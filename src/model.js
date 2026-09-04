@@ -132,7 +132,8 @@ const Model = (() => {
           fontSize: 14,
           color: '#333333',
           bold: false,
-          align: 'left'
+          align: 'center',
+          valign: 'middle'
         }
       };
       _nodes.push(node);
@@ -177,7 +178,8 @@ const Model = (() => {
           fontSize: 14,
           color: '#333333',
           bold: false,
-          align: 'center'
+          align: 'center',
+          valign: 'middle'
         }
       };
       _nodes.push(node);

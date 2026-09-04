@@ -21,9 +21,15 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 .shape-bg { filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.14)); }
 .image-el { filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.14)); }
 .sticky-fo, .shape-fo, .text-fo { overflow: visible; }
-.sticky-text {
+.sticky-text-wrap {
   width: 100%;
   height: 100%;
+  display: flex;
+  overflow: hidden;
+}
+.sticky-text {
+  width: 100%;
+  max-height: 100%;
   padding: 10px 12px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
@@ -37,9 +43,9 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   height: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
 }
 .shape-text {
+  width: 100%;
   text-align: center;
   padding: 6px 10px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

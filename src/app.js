@@ -356,6 +356,13 @@
     center: '<svg viewBox="0 0 16 12" width="14" height="14"><rect x="1" y="1" width="14" height="2" fill="currentColor"/><rect x="3.5" y="5" width="9" height="2" fill="currentColor"/><rect x="2" y="9" width="12" height="2" fill="currentColor"/></svg>',
     right: '<svg viewBox="0 0 16 12" width="14" height="14"><rect x="1" y="1" width="14" height="2" fill="currentColor"/><rect x="6" y="5" width="9" height="2" fill="currentColor"/><rect x="4" y="9" width="12" height="2" fill="currentColor"/></svg>'
   };
+  const VALIGN_LABELS = { top: '上揃え', middle: '上下中央', bottom: '下揃え' };
+  // 縦位置アイコン（薄い外枠＋上/中/下に太い横棒）
+  const VALIGN_ICONS = {
+    top: '<svg viewBox="0 0 14 14" width="14" height="14"><rect x="2" y="2" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="3.5" width="6" height="2.5" fill="currentColor" stroke="none"/></svg>',
+    middle: '<svg viewBox="0 0 14 14" width="14" height="14"><rect x="2" y="2" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="5.75" width="6" height="2.5" fill="currentColor" stroke="none"/></svg>',
+    bottom: '<svg viewBox="0 0 14 14" width="14" height="14"><rect x="2" y="2" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="8" width="6" height="2.5" fill="currentColor" stroke="none"/></svg>'
+  };
 
   function closeTextStylePopover() {
     textStylePopover.classList.remove('open');
@@ -524,6 +531,27 @@
       alignGroup.appendChild(btn);
     });
     textRow.appendChild(alignGroup);
+
+    // ---- 縦位置（上/中/下）。付箋・図形のみ（テキストノードは高さが文字に追従するため対象外） ----
+    if (node.type !== 'text') {
+      appendPopoverSeparator(textRow);
+      const valign = style.valign || (node.type === 'sticky' ? 'top' : 'middle');
+      const valignGroup = document.createElement('span');
+      valignGroup.className = 'tsp-group';
+      ['top', 'middle', 'bottom'].forEach(v => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tsp-align tsp-valign' + (valign === v ? ' active' : '');
+        btn.title = VALIGN_LABELS[v];
+        btn.innerHTML = VALIGN_ICONS[v];
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          applyStylePatch(node.id, { valign: v });
+        });
+        valignGroup.appendChild(btn);
+      });
+      textRow.appendChild(valignGroup);
+    }
   }
 
   // 選択が「1ノードだけ・画像以外・編集中でない・ドラッグ/リサイズ中でない」なら
