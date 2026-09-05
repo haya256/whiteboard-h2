@@ -6,34 +6,80 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- ツールバー（リボン風）。アプリ名・ボード名・各グループを1行に並べる。
+       グループはボタンを枠で囲み、その上に小さくグループ名を出す。
+       横幅が足りないときは src/ribbon.js が末尾のボタンを「⋯」のメニューへ退避させる
+       （各グループの左端のボタンは最後まで残す）。 -->
   <div id="toolbar">
-    <span class="app-title">openboard（仮）</span>
-    <!-- ボード名（クリックで編集。保存時のファイル名になる） -->
-    <span id="board-name" title="クリックしてボード名を編集（保存時のファイル名になります）"></span>
-    <input type="text" id="board-name-input" maxlength="80" hidden>
-    <button id="btn-add-sticky">+ 付箋</button>
-    <button id="btn-add-rect">□ 矩形</button>
-    <button id="btn-add-ellipse">○ 楕円</button>
-    <button id="btn-add-diamond">◇ ひし形</button>
-    <button id="btn-add-text">T テキスト</button>
-    <button id="btn-connector">→ コネクタ</button>
-    <label class="toolbar-btn" id="btn-image-label">
-      🖼 画像
-      <input type="file" id="btn-image" accept="image/*" multiple>
-    </label>
-    <div class="toolbar-sep"></div>
-    <button id="btn-undo" title="元に戻す (Ctrl+Z)">↶ 元に戻す</button>
-    <button id="btn-redo" title="やり直す (Ctrl+Shift+Z / Ctrl+Y)">↷ やり直す</button>
-    <button id="btn-new" title="ボードを空にして新しく作り直す">新規</button>
-    <button id="btn-export">保存 (.svg)</button>
-    <label class="toolbar-btn" id="btn-import-label">
-      開く (.svg)
-      <input type="file" id="btn-import" accept=".svg">
-    </label>
-    <span id="zoom-label">100%</span>
-    <button id="btn-zoom-fit" title="全ノードが収まるように表示">⛶ 全体表示</button>
-    <button id="btn-zoom-reset" title="表示位置とズームをリセット">⟲ リセット</button>
-    <button id="btn-help" title="使い方とデータの保存について">？ ヘルプ</button>
+    <div class="ribbon-lead">
+      <span class="app-title">openboard（仮）</span>
+      <!-- ボード名（クリックで編集。保存時のファイル名になる） -->
+      <span id="board-name" title="クリックしてボード名を編集（保存時のファイル名になります）"></span>
+      <input type="text" id="board-name-input" maxlength="80" hidden>
+    </div>
+
+    <div class="ribbon-groups">
+      <div class="ribbon-group" data-group="file">
+        <div class="ribbon-group-label">ファイル</div>
+        <div class="ribbon-group-items">
+          <button id="btn-new" title="ボードを空にして新しく作り直す">新規</button>
+          <label class="toolbar-btn" id="btn-import-label">
+            開く (.svg)
+            <input type="file" id="btn-import" accept=".svg">
+          </label>
+          <button id="btn-export">保存 (.svg)</button>
+          <button class="ribbon-more" type="button" hidden aria-label="ファイルのその他の操作" aria-expanded="false">⋯</button>
+        </div>
+        <div class="ribbon-menu" hidden></div>
+      </div>
+
+      <div class="ribbon-group" data-group="edit">
+        <div class="ribbon-group-label">編集</div>
+        <div class="ribbon-group-items">
+          <button id="btn-undo" title="元に戻す (Ctrl+Z)">↶ 元に戻す</button>
+          <button id="btn-redo" title="やり直す (Ctrl+Shift+Z / Ctrl+Y)">↷ やり直す</button>
+          <button class="ribbon-more" type="button" hidden aria-label="編集のその他の操作" aria-expanded="false">⋯</button>
+        </div>
+        <div class="ribbon-menu" hidden></div>
+      </div>
+
+      <div class="ribbon-group" data-group="insert">
+        <div class="ribbon-group-label">挿入</div>
+        <div class="ribbon-group-items">
+          <button id="btn-add-sticky">+ 付箋</button>
+          <button id="btn-add-rect">□ 矩形</button>
+          <button id="btn-add-ellipse">○ 楕円</button>
+          <button id="btn-add-diamond">◇ ひし形</button>
+          <button id="btn-add-text">T テキスト</button>
+          <label class="toolbar-btn" id="btn-image-label">
+            🖼 画像
+            <input type="file" id="btn-image" accept="image/*" multiple>
+          </label>
+          <button id="btn-connector">→ コネクタ</button>
+          <button class="ribbon-more" type="button" hidden aria-label="挿入のその他の操作" aria-expanded="false">⋯</button>
+        </div>
+        <div class="ribbon-menu" hidden></div>
+      </div>
+
+      <div class="ribbon-group" data-group="view">
+        <div class="ribbon-group-label">表示</div>
+        <div class="ribbon-group-items">
+          <span id="zoom-label">100%</span>
+          <button id="btn-zoom-fit" title="全ノードが収まるように表示">⛶ 全体表示</button>
+          <button id="btn-zoom-reset" title="表示位置とズームをリセット">⟲ リセット</button>
+          <button class="ribbon-more" type="button" hidden aria-label="表示のその他の操作" aria-expanded="false">⋯</button>
+        </div>
+        <div class="ribbon-menu" hidden></div>
+      </div>
+
+      <div class="ribbon-group" data-group="help">
+        <div class="ribbon-group-label">ヘルプ</div>
+        <div class="ribbon-group-items">
+          <button id="btn-help" title="使い方とデータの保存について">？ ヘルプ</button>
+        </div>
+        <div class="ribbon-menu" hidden></div>
+      </div>
+    </div>
   </div>
   <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
 
@@ -143,6 +189,7 @@
   <script src="src/history.js"></script>
   <script src="src/image.js"></script>
   <script src="src/dialog.js"></script>
+  <script src="src/ribbon.js"></script>
   <script src="src/app.js"></script>
   <script src="src/welcome.js"></script>
 </body>

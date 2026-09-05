@@ -8,22 +8,37 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* ---- Toolbar ---- */
+/* ---- Toolbar（リボン風） ---- */
+/* 1段目：アプリ名とボード名 / 2段目：グループ名 + ボタン。
+   高さは --toolbar-h にまとめてあり、#canvas とポップオーバーの位置がこれに追随する
+   （JS 側は #toolbar の実際の高さを見るので、ここを変えるだけでよい）。 */
+:root {
+  --toolbar-h: 52px;
+}
+
 #toolbar {
   position: fixed;
   top: 0; left: 0; right: 0;
-  height: 52px;
+  height: var(--toolbar-h);
   background: #1a1b26;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 16px;
+  gap: 10px;
+  padding: 0 12px;
   z-index: 100;
   box-shadow: 0 1px 0 rgba(255,255,255,0.07), 0 2px 8px rgba(0,0,0,0.4);
 }
 
+/* アプリ名とボード名。グループと同じ行に置く */
+.ribbon-lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
 .app-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: #c0caf5;
   letter-spacing: -0.3px;
@@ -38,12 +53,11 @@ html, body {
   padding: 4px 8px;
   border-radius: 6px;
   cursor: text;
-  max-width: 220px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: none;
-  margin-right: 8px;
 }
 
 #board-name:hover {
@@ -52,7 +66,7 @@ html, body {
 }
 
 #board-name-input {
-  width: 220px;
+  width: 200px;
   background: #12131c;
   border: 1px solid #3a3b50;
   border-radius: 6px;
@@ -61,7 +75,6 @@ html, body {
   font-size: 13px;
   font-family: inherit;
   outline: none;
-  margin-right: 8px;
 }
 
 #board-name-input:focus {
@@ -72,14 +85,75 @@ html, body {
   display: none;
 }
 
-.toolbar-sep { flex: 1; }
+/* ---- グループ ---- */
+/* はみ出しは src/ribbon.js が「⋯」メニューへ退避させて解消するが、
+   計測前の一瞬などに崩れないよう overflow: hidden も掛けておく */
+.ribbon-groups {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* 枠の上辺に重ねたグループ名がはみ出すぶんの余白。
+     overflow: hidden で切られないよう、ここで場所を確保しておく */
+  padding-top: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* グループはボタンを枠でぐるっと囲み、その上に小さくグループ名を出す。
+   縮ませない：横幅が足りない分は src/ribbon.js が「⋯」へ退避させて解消する
+   （flex で縮むとボタンの文字が潰れ、幅の実測値も当てにならなくなる） */
+.ribbon-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+  border: 1px solid #7a83b8;
+  border-radius: 8px;
+  padding: 3px 9px;
+}
+
+/* グループ名は枠線の上辺に重ねる（fieldset の legend と同じ見せ方）。
+   ツールバーと同じ背景を敷いて、文字の下の線を隠している */
+.ribbon-group-label {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1b26;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 12px;
+  color: #c0caf5;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.ribbon-group-items {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+
+/* ---- ボタン ---- */
+/* hidden を付けた要素は必ず消えるようにする。
+   #toolbar button の display 指定のほうが [hidden] より詳細度が高く、
+   「⋯」を hidden にしても消えない問題があったため */
+#toolbar [hidden] {
+  display: none !important;
+}
 
 #toolbar button, .toolbar-btn {
-  padding: 7px 14px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
   border: none;
-  border-radius: 7px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   background: #2a2b3d;
   color: #a9b1d6;
@@ -124,20 +198,83 @@ html, body {
 }
 
 #zoom-label {
-  min-width: 44px;
+  min-width: 40px;
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: #a9b1d6;
   user-select: none;
 }
 
+/* ---- グループのはみ出し分を入れる「⋯」とそのメニュー ---- */
+
+.ribbon-more {
+  padding: 0 8px !important;
+  font-size: 14px !important;
+}
+
+.ribbon-more[hidden] { display: none; }
+
+/* ツールバーから下りてくるメニューなので、白い #context-menu ではなくツールバーと同じ暗色にする */
+.ribbon-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  background: #24252f;
+  border: 1px solid #3a3b50;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+  padding: 4px;
+  z-index: 200;
+}
+
+.ribbon-menu[hidden] { display: none; }
+
+/* メニューの中では横並び用の見た目をやめ、左揃えの一覧にする。
+   #btn-add-sticky などの ID 指定 + !important に勝つ必要があるので #toolbar を前置している */
+#toolbar .ribbon-menu button,
+#toolbar .ribbon-menu .toolbar-btn {
+  width: 100%;
+  height: auto;
+  font-size: 13px;
+  text-align: left;
+  background: none !important;
+  color: #c0caf5 !important;
+  font-weight: 500 !important;
+  padding: 8px 12px;
+  border-radius: 5px;
+}
+
+#toolbar .ribbon-menu button:hover,
+#toolbar .ribbon-menu .toolbar-btn:hover {
+  background: #3a3b50 !important;
+}
+
+#toolbar .ribbon-menu button:disabled,
+#toolbar .ribbon-menu button:disabled:hover {
+  background: none !important;
+  color: #6b7280 !important;
+}
+
+/* 選択中コネクタの青は状態表示なのでメニュー内でも残す */
+#toolbar .ribbon-menu #btn-connector.active {
+  background: #4a90e2 !important;
+  color: #fff !important;
+}
+
+#toolbar .ribbon-menu #zoom-label {
+  padding: 8px 12px;
+  text-align: left;
+}
+
 /* ---- Canvas ---- */
 #canvas {
   position: fixed;
-  top: 52px; left: 0;
+  top: var(--toolbar-h); left: 0;
   width: 100%;
-  height: calc(100% - 52px);
+  height: calc(100% - var(--toolbar-h));
   background: #f5f5f8;
   cursor: default;
   user-select: none;

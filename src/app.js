@@ -4,6 +4,13 @@
   const canvas = document.getElementById('canvas');
   View.init(canvas);
 
+  // ポップオーバーがツールバーの裏に潜り込まないための上限。
+  // ツールバーの高さは CSS（--toolbar-h）で変わるので、都度その実測値から求める
+  function topLimit() {
+    const toolbar = document.getElementById('toolbar');
+    return (toolbar ? toolbar.offsetHeight : 0) + 4;
+  }
+
   const saved = IO.load();
   if (saved?.nodes?.length) {
     Model.setNodes(saved.nodes);
@@ -415,7 +422,8 @@
     const top = View.worldToScreen(node.x, node.y);
     const height = textStylePopover.offsetHeight;
     let y = top.y - height - 8;
-    if (y < 0) {
+    if (y < topLimit()) {
+      // 上に置くとツールバーに隠れてしまうのでノードの下へ回す
       const bottom = View.worldToScreen(node.x, node.y + node.height);
       y = bottom.y + 8;
     }
@@ -601,7 +609,7 @@
     const w = textStylePopover.offsetWidth;
     const h = textStylePopover.offsetHeight;
     const GAP = 12;
-    const TOP_LIMIT = 56; // ツールバー（52px）の下に収める
+    const TOP_LIMIT = topLimit(); // ツールバーの下に収める
     let x, y;
     if (br.y - tl.y > br.x - tl.x) {
       // 縦長：右側に縦中央揃え
