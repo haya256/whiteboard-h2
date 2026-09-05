@@ -2,6 +2,11 @@
 
 const IO = (() => {
   const STORAGE_KEY = 'openboard_v01';
+  // 最後に .svg へ書き出した（または .svg から開いた）時点の内容の指紋。
+  // localStorage の自動保存は常に最新なので「未保存かどうか」の基準にはならず、
+  // .svg への書き出しを基準にするためこのキーを別に持つ。
+  // buildData() に含めると書き出した .svg のメタデータにも混入するため、保存先も分けている。
+  const EXPORT_MARK_KEY = 'openboard_export_mark_v01';
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
   // File System Access API（Chrome / Edge）用。同じ id を使うと「開く」「保存」で最後に使ったフォルダを
@@ -106,6 +111,35 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
       toast.classList.remove('open');
       _toastTimer = null;
     }, 4000);
+  }
+
+  // ---- 未保存かどうかの判定（.svg への書き出しを基準にする） ----
+  // 比較対象は nodes / edges / ボード名。viewport（パン・ズーム）は History の対象外なのでここでも含めない。
+
+  function fingerprint() {
+    return JSON.stringify({ title: Model.getTitle(), nodes: Model.getNodes(), edges: Model.getEdges() });
+  }
+
+  // 現在の内容を「保存済み」として記録する（.svg の保存・読み込み・新規作成の直後に呼ぶ）
+  function markSaved() {
+    try {
+      localStorage.setItem(EXPORT_MARK_KEY, fingerprint());
+    } catch (e) {
+      // 容量超過などで記録できない場合は、次回 isDirty() が保守的に true 側へ倒れるだけなので無視する
+    }
+  }
+
+  // 最後に .svg を保存/読み込みした時点から内容が変わっていれば true。
+  // 基準が未記録の場合（この機能より前から残っているボード）は、内容があれば未保存とみなす。
+  function isDirty() {
+    let mark = null;
+    try {
+      mark = localStorage.getItem(EXPORT_MARK_KEY);
+    } catch (e) {
+      mark = null;
+    }
+    if (mark === null) return Model.getNodes().length > 0 || Model.getEdges().length > 0;
+    return mark !== fingerprint();
   }
 
   function save() {
@@ -256,8 +290,15 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   // 保存ダイアログ（File System Access API）で保存する。対応ブラウザでは「開く」と同じ id を使うため
   // 最後に保存/読み込みしたフォルダをブラウザが覚えていて、次回もそのフォルダが開く。
   // onSaved はダイアログ経由の保存が成功したときのみ呼ばれる（フォールバック時は呼ばない）。
+  // 戻り値は保存できたかどうか（true = 保存した / false = キャンセル・失敗）。
+  // 「保存して新規作成」のように、保存の成否を見てから次の処理へ進みたい呼び出し側が使う。
   async function exportSVG(onSaved) {
-    if (!hasFileSystemAccess()) { downloadSVG(buildSVGString()); return; }
+    if (!hasFileSystemAccess()) {
+      // <a download> はブラウザに渡した時点で成否を確認できないため、保存されたものとして扱う
+      downloadSVG(buildSVGString());
+      markSaved();
+      return true;
+    }
 
     let handle;
     try {
@@ -267,10 +308,11 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
         types: SVG_PICKER_TYPES
       });
     } catch (err) {
-      if (err && err.name === 'AbortError') return; // キャンセル
+      if (err && err.name === 'AbortError') return false; // キャンセル
       showToast('保存ダイアログを開けませんでした: ' + err.message);
       downloadSVG(buildSVGString());
-      return;
+      markSaved();
+      return true;
     }
 
     // ダイアログで付けたファイル名を先にボード名へ反映してから SVG を組み立てる
@@ -285,11 +327,13 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
       await writable.close();
     } catch (err) {
       showToast('保存に失敗しました: ' + err.message);
-      return;
+      return false;
     }
 
     save();
+    markSaved();
     if (typeof onSaved === 'function') onSaved();
+    return true;
   }
 
   function importSVG(file, onSuccess) {
@@ -333,5 +377,5 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     return true;
   }
 
-  return { save, load, exportSVG, importSVG, openSVG, hasFileSystemAccess, showToast };
+  return { save, load, exportSVG, importSVG, openSVG, hasFileSystemAccess, showToast, markSaved, isDirty };
 })();

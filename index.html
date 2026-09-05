@@ -24,6 +24,7 @@
     <div class="toolbar-sep"></div>
     <button id="btn-undo" title="元に戻す (Ctrl+Z)">↶ 元に戻す</button>
     <button id="btn-redo" title="やり直す (Ctrl+Shift+Z / Ctrl+Y)">↷ やり直す</button>
+    <button id="btn-new" title="ボードを空にして新しく作り直す">新規</button>
     <button id="btn-export">保存 (.svg)</button>
     <label class="toolbar-btn" id="btn-import-label">
       開く (.svg)
@@ -58,6 +59,19 @@
 
   <!-- 容量超過などの通知を表示するトースト -->
   <div id="toast"></div>
+
+  <!-- 未保存の内容を破棄する前に確認するダイアログ（「新規」ボタンから開く） -->
+  <div id="confirm-overlay" hidden>
+    <div id="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">保存していない変更があります</h2>
+      <p id="confirm-message"></p>
+      <div class="confirm-footer">
+        <button id="confirm-cancel" class="confirm-quiet">キャンセル</button>
+        <button id="confirm-discard" class="confirm-quiet"></button>
+        <button id="confirm-save"></button>
+      </div>
+    </div>
+  </div>
 
   <!-- 初回起動時のウェルカム画面（「？ ヘルプ」ボタンからも開ける） -->
   <div id="welcome-overlay" hidden>
@@ -128,6 +142,7 @@
   <script src="src/io.js"></script>
   <script src="src/history.js"></script>
   <script src="src/image.js"></script>
+  <script src="src/dialog.js"></script>
   <script src="src/app.js"></script>
   <script src="src/welcome.js"></script>
 </body>

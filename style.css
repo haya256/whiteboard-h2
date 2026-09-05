@@ -773,3 +773,86 @@ html, body {
 .welcome-more ul {
   margin-top: 2px;
 }
+
+/* ---- 未保存の内容を破棄する前の確認ダイアログ（#confirm-overlay） ---- */
+/* ウェルカム画面と同じ見た目に揃える。ウェルカム画面より手前に出す必要はないが、
+   万一同時に開いても確認が前に来るよう z-index は 1 つ上にしている */
+
+#confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 310;
+  padding: 16px;
+}
+
+#confirm-overlay[hidden] {
+  display: none;
+}
+
+#confirm-dialog {
+  background: #fff;
+  border-radius: 10px;
+  max-width: 460px;
+  width: 100%;
+  padding: 22px 26px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  color: #333;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+#confirm-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+#confirm-message {
+  margin: 0;
+  word-break: break-word;
+}
+
+.confirm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #eee;
+}
+
+.confirm-footer button {
+  border-radius: 7px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 既定の操作（保存してから新規作成）を目立たせる */
+#confirm-save {
+  background: #4a90e2;
+  color: #fff;
+  border: none;
+}
+
+#confirm-save:hover {
+  background: #3b7fd0;
+}
+
+/* キャンセルと「保存せずに」は控えめにして、誤って押しにくくする */
+.confirm-quiet {
+  background: #fff;
+  color: #555;
+  border: 1px solid #ccc;
+}
+
+.confirm-quiet:hover {
+  background: #f2f2f5;
+}

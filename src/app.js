@@ -931,24 +931,77 @@
     Model.setTitle(base || data.meta?.title || '');
     renderBoardName();
     commit();
+    IO.markSaved(); // 開いた直後はファイルの内容と一致しているので「保存済み」とする
     refreshTextStylePopover(); // 選択は解除済みのため閉じる
   }
 
+  // ---- 新規作成 ----
+  // ボードを空にしてボード名を既定に戻す。未保存の変更がある場合は呼び出し側で確認してから呼ぶ。
+  function newBoard() {
+    setConnectMode(false);
+    closeLinkPopover();
+    Model.setNodes([]);
+    Model.setEdges([]);
+    Model.setTitle(''); // 空文字を渡すと既定のボード名（無題のボード）に戻る
+    View.renderAll([]);
+    View.selectNodes([]);
+    View.selectEdge(null);
+    View.setViewport({ x: 0, y: 0, zoom: 1 });
+    updateZoomLabel();
+    renderBoardName();
+    // 新規作成は履歴の起点にする（Ctrl+Z で前のボードが戻ってこないようにする）
+    History.clear();
+    updateHistoryButtons();
+    IO.save();
+    IO.markSaved(); // 空の新規ボードは保存すべき内容がないので「保存済み」とする
+    refreshTextStylePopover();
+  }
+
+  document.getElementById('btn-new').addEventListener('click', async () => {
+    if (!IO.isDirty()) { newBoard(); return; }
+
+    const answer = await Dialog.confirmDiscard(Model.getTitle(), '新規作成');
+    if (answer === 'cancel') return;
+    // 保存を選んだのに保存できなかった（ダイアログをキャンセルした等）場合は新規作成しない
+    if (answer === 'save' && !(await IO.exportSVG(renderBoardName))) return;
+    newBoard();
+  });
+
   document.getElementById('btn-export').addEventListener('click', () => IO.exportSVG(renderBoardName));
+
+  // 「開く」も現在のボードを捨てるため、未保存の変更があれば新規作成と同じ確認を出す。
+  // 確認して「保存せずに開く」「保存して開く」が選ばれた場合だけ読み込みへ進む。
+  // 戻り値は読み込んでよいかどうか。
+  async function confirmBeforeOpen() {
+    if (!IO.isDirty()) return true;
+    const answer = await Dialog.confirmDiscard(Model.getTitle(), '開く');
+    if (answer === 'cancel') return false;
+    // 保存を選んだのに保存できなかった（ダイアログをキャンセルした等）場合は開かない
+    if (answer === 'save' && !(await IO.exportSVG(renderBoardName))) return false;
+    return true;
+  }
 
   // Chrome / Edge では File System Access API のダイアログで開く（フォルダを記憶してくれる）。
   // 非対応ブラウザでは preventDefault しないので label の既定動作で <input type="file"> が開く。
-  document.getElementById('btn-import-label').addEventListener('click', e => {
-    if (!IO.hasFileSystemAccess()) return;
+  //
+  // 確認を出すタイミングが2つの経路で異なる：
+  //   File System Access API 側 … ファイル選択を開く前（ダイアログのボタン押下がそのまま
+  //     ユーザー操作として引き継がれるため、確認のあとでも showOpenFilePicker を開ける）
+  //   非対応ブラウザ側 … ファイル選択のあと（change）。label の既定動作を止めてしまうと
+  //     ファイル選択を開き直す手段がユーザー操作の有効期限に依存するため、それを避けている
+  const importInput = document.getElementById('btn-import');
+
+  document.getElementById('btn-import-label').addEventListener('click', async e => {
+    if (!IO.hasFileSystemAccess()) return; // label の既定動作にまかせ、確認は change 側で行う
     e.preventDefault();
-    IO.openSVG(loadBoardData);
+    if (await confirmBeforeOpen()) IO.openSVG(loadBoardData);
   });
 
-  document.getElementById('btn-import').addEventListener('change', e => {
+  importInput.addEventListener('change', async e => {
     const file = e.target.files[0];
+    e.target.value = ''; // 同じファイルを選び直しても change が発火するようにここで空にしておく
     if (!file) return;
-    IO.importSVG(file, loadBoardData);
-    e.target.value = '';
+    if (await confirmBeforeOpen()) IO.importSVG(file, loadBoardData);
   });
 
   // ---- ズームリセット / 全体表示 ----
