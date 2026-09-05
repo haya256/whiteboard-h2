@@ -882,7 +882,39 @@ html, body {
   background: #3b7fd0;
 }
 
-/* 保存・容量の説明は1項目目だけ見せ、残りは「詳細」クリックで展開する */
+/* 「データはどこに保存される？」「データ量の目安と制限」は、
+   最初は見出しだけを出し、クリックで中身を開く（h3 と同じ見た目の summary にする） */
+.welcome-section {
+  margin-top: 18px;
+}
+
+.welcome-section > summary {
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a1b26;
+}
+
+.welcome-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.welcome-section > summary::before {
+  content: '▸ ';
+  color: #4a90e2;
+}
+
+.welcome-section[open] > summary::before {
+  content: '▾ ';
+}
+
+.welcome-section > ul {
+  margin-top: 4px;
+}
+
+/* 対応ブラウザの説明は1項目目だけ見せ、残りは「詳細」クリックで展開する */
 .welcome-more {
   margin: 2px 0 0 20px;
 }
