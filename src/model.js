@@ -118,14 +118,16 @@ const Model = (() => {
       _selectedIds = new Set();
     },
 
-    addSticky() {
+    // cx, cy（ワールド座標）を中心として付箋を配置する
+    addSticky(cx, cy) {
+      const W = 200, H = 200;
       const node = {
         id: crypto.randomUUID(),
         type: 'sticky',
-        x: 80 + Math.random() * 320,
-        y: 80 + Math.random() * 160,
-        width: 200,
-        height: 200,
+        x: cx - W / 2,
+        y: cy - H / 2,
+        width: W,
+        height: H,
         content: '',
         style: {
           background: STICKY_COLORS[0],
@@ -140,16 +142,17 @@ const Model = (() => {
       return node;
     },
 
-    // 背景・枠のないテキストのみのノードを追加する。
-    // x, y を指定した場合はその点を配置座標とする（未指定なら addSticky と同じランダム配置）。
-    addText(x, y) {
+    // 背景・枠のないテキストのみのノードを、cx, cy（ワールド座標）を中心として追加する。
+    addText(cx, cy) {
+      const W = 240;
+      const H = 56; // 既定フォント32px × 行高1.4 + 上下余白8px が収まる高さ
       const node = {
         id: crypto.randomUUID(),
         type: 'text',
-        x: x != null ? x : 80 + Math.random() * 320,
-        y: y != null ? y : 80 + Math.random() * 160,
-        width: 240,
-        height: 56, // 既定フォント32px × 行高1.4 + 上下余白8px が収まる高さ
+        x: cx - W / 2,
+        y: cy - H / 2,
+        width: W,
+        height: H,
         content: '',
         style: {
           fontSize: 32,
@@ -162,15 +165,17 @@ const Model = (() => {
       return node;
     },
 
-    addShape(shape) {
+    // cx, cy（ワールド座標）を中心として図形を配置する
+    addShape(shape, cx, cy) {
+      const W = 160, H = 120;
       const node = {
         id: crypto.randomUUID(),
         type: 'shape',
         shape,
-        x: 80 + Math.random() * 320,
-        y: 80 + Math.random() * 160,
-        width: 160,
-        height: 120,
+        x: cx - W / 2,
+        y: cy - H / 2,
+        width: W,
+        height: H,
         content: '',
         style: {
           background: '#ffffff',
@@ -188,8 +193,8 @@ const Model = (() => {
 
     // 画像ノードを追加する。naturalW/H は画像の自然サイズ（src/image.js で圧縮済みのサイズが渡される）。
     // 縦横比を保ったまま最大 400px（定数 MAX）に収まるよう表示サイズを縮小する。
-    // x, y を指定した場合はその点を画像の中心として配置する（未指定なら他ノードと同様ランダム配置）。
-    addImage(src, naturalW, naturalH, x, y) {
+    // cx, cy（ワールド座標）を画像の中心として配置する。
+    addImage(src, naturalW, naturalH, cx, cy) {
       const MAX = 400;
       let w = naturalW || MAX;
       let h = naturalH || MAX;
@@ -201,8 +206,8 @@ const Model = (() => {
       const node = {
         id: crypto.randomUUID(),
         type: 'image',
-        x: x != null ? x - w / 2 : 80 + Math.random() * 320,
-        y: y != null ? y - h / 2 : 80 + Math.random() * 160,
+        x: cx - w / 2,
+        y: cy - h / 2,
         width: w,
         height: h,
         src

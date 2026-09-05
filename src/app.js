@@ -796,9 +796,35 @@
 
   // ---- ツールバー ----
 
+  // ---- 挿入位置 ----
+  // 新しいノードは「今表示されている画面の中央」に置く。ただし同じ場所へ続けて挿入すると
+  // ぴったり重なってしまうため、2個目以降は右下へ 24px ずつずらす（10段で折り返し、
+  // 画面外まで流れていかないようにする）。パン・ズームで中央が変わったとき、または
+  // 直前に挿入したノード以外を選択したときは中央からやり直す。
+  const CASCADE_STEP = 24;
+  const CASCADE_WRAP = 10;
+  let cascadeOrigin = null; // 前回の挿入で使ったキャンバス中央（ワールド座標）
+  let cascadeCount = 0;
+  let lastInsertedId = null;
+
+  function nextInsertPoint() {
+    const c = View.canvasCenter();
+    const movedView = !cascadeOrigin
+      || Math.abs(c.x - cascadeOrigin.x) > 0.5
+      || Math.abs(c.y - cascadeOrigin.y) > 0.5;
+    const sel = Model.getSelectedIds();
+    const keptSelection = lastInsertedId && sel.length === 1 && sel[0] === lastInsertedId;
+    cascadeCount = movedView || !keptSelection ? 0 : (cascadeCount + 1) % CASCADE_WRAP;
+    cascadeOrigin = c;
+    const d = cascadeCount * CASCADE_STEP;
+    return { x: c.x + d, y: c.y + d };
+  }
+
   document.getElementById('btn-add-sticky').addEventListener('click', () => {
-    const node = Model.addSticky();
+    const p = nextInsertPoint();
+    const node = Model.addSticky(p.x, p.y);
     View.addNode(node);
+    lastInsertedId = node.id;
     Model.select(node.id);
     View.selectNode(node.id);
     View.selectEdge(null);
@@ -808,8 +834,10 @@
 
   ['rect', 'ellipse', 'diamond'].forEach(shape => {
     document.getElementById(`btn-add-${shape}`).addEventListener('click', () => {
-      const node = Model.addShape(shape);
+      const p = nextInsertPoint();
+      const node = Model.addShape(shape, p.x, p.y);
       View.addNode(node);
+      lastInsertedId = node.id;
       Model.select(node.id);
       View.selectNode(node.id);
       View.selectEdge(null);
@@ -823,8 +851,10 @@
   // 履歴・保存への反映は編集確定（finishNodeEdit → commit）まで行わない
   // （キャンセルされた場合に空ノードの痕跡を履歴に残さないため）。
   document.getElementById('btn-add-text').addEventListener('click', () => {
-    const node = Model.addText();
+    const p = nextInsertPoint();
+    const node = Model.addText(p.x, p.y);
     View.addNode(node);
+    lastInsertedId = node.id;
     Model.select(node.id);
     View.selectNode(node.id);
     View.selectEdge(null);
@@ -835,10 +865,12 @@
   // ---- 画像の追加（共通処理） ----
 
   // src（dataURL）と自然サイズからノードを追加する共通処理。
-  // x, y を指定すると、その点を中心に配置する（ドロップ位置・ペースト位置用）。
+  // x, y はワールド座標で、その点を画像の中心として配置する
+  //（ツールバーからの挿入は nextInsertPoint、ドロップ・ペーストはその位置を渡す）。
   function addImageNode(src, width, height, x, y) {
     const node = Model.addImage(src, width, height, x, y);
     View.addNode(node);
+    lastInsertedId = node.id;
     Model.select(node.id);
     View.selectNode(node.id);
     View.selectEdge(null);
@@ -872,8 +904,13 @@
   }
 
   document.getElementById('btn-image').addEventListener('change', e => {
-    Array.from(e.target.files).forEach(file => loadImageFile(file));
+    const files = Array.from(e.target.files);
     e.target.value = '';
+    if (!files.length) return;
+    // 画像の読み込みは非同期なので、選択したファイルぶんの位置をここでまとめて決める
+    const p = nextInsertPoint();
+    files.forEach((file, i) => loadImageFile(file, p.x + i * CASCADE_STEP, p.y + i * CASCADE_STEP));
+    cascadeCount = (cascadeCount + files.length - 1) % CASCADE_WRAP; // 次の挿入は最後の画像の続きから
   });
 
   // ---- 画像のドラッグ&ドロップ ----
