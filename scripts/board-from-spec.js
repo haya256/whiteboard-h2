@@ -45,6 +45,16 @@ function imageDims(file) {
   throw new Error('JPEG / PNG 以外の画像には対応していません: ' + file);
 }
 
+// 埋め込み用の MIME（imageDims と違い、未知の形式でも拡張子から推測して落ちない）
+function mimeOf(file, buf) {
+  if (buf[0] === 0x89 && buf.toString('ascii', 1, 4) === 'PNG') return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  if (buf.toString('ascii', 0, 3) === 'GIF') return 'image/gif';
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (/\.svg$/i.test(file)) return 'image/svg+xml';
+  return 'application/octet-stream';
+}
+
 // ---- 引数 ----
 const argv = process.argv.slice(2);
 if (argv[0] === '--dims') {
@@ -162,6 +172,23 @@ for (const n of spec.nodes || []) {
       x: X(n.cx - w / 2), y: Y(n.cy - h / 2), width: W(w), height: W(h),
       content,
       style: { fontSize, color: n.color || DEFAULT_TEXT_COLOR, bold: !!n.bold, align: n.align || 'center' }
+    };
+    nodes.push(node); byName[name] = node;
+  } else if (type === 'image') {
+    // src はファイルパス（仕様ファイルからの相対可）か data: URI。ファイルは base64 で埋め込む
+    let src = n.src || '';
+    let w = n.w, h = n.h;
+    if (src && !/^data:/.test(src)) {
+      const p = resolveFrom(src);
+      if (!fs.existsSync(p)) { warnings.push(`画像が見つかりません: ${src}（${name}）`); continue; }
+      const bytes = fs.readFileSync(p);
+      if (!w || !h) { const d = imageDims(p); w = w || d.width; h = h || d.height; }
+      src = `data:${mimeOf(p, bytes)};base64,${bytes.toString('base64')}`;
+    }
+    w = w || 200; h = h || 200;
+    const node = {
+      id: uid(), type: 'image',
+      x: X(n.cx - w / 2), y: Y(n.cy - h / 2), width: W(w), height: W(h), src
     };
     nodes.push(node); byName[name] = node;
   } else {
@@ -340,7 +367,7 @@ const ids = new Set(parsed.nodes.map(n => n.id));
 const dangling = parsed.edges.filter(e => !ids.has(e.from) || !ids.has(e.to)).length;
 
 console.log(`書き出し: ${outPath}`);
-console.log(`  ノード ${parsed.nodes.length}（付箋 ${nodes.filter(n => n.type === 'sticky').length} / 図形 ${nodes.filter(n => n.type === 'shape').length} / テキスト ${nodes.filter(n => n.type === 'text').length} / ラベル ${labelNodes.length} / 画像 ${imageNode ? 1 : 0}）、コネクタ ${parsed.edges.length}、${(fs.statSync(outPath).size / 1024).toFixed(0)} KB`);
+console.log(`  ノード ${parsed.nodes.length}（付箋 ${nodes.filter(n => n.type === 'sticky').length} / 図形 ${nodes.filter(n => n.type === 'shape').length} / テキスト ${nodes.filter(n => n.type === 'text').length} / ラベル ${labelNodes.length} / 画像 ${nodes.filter(n => n.type === 'image').length + (imageNode ? 1 : 0)}）、コネクタ ${parsed.edges.length}、${(fs.statSync(outPath).size / 1024).toFixed(0)} KB`);
 if (imgDims) console.log(`  元画像: ${imgDims.width} x ${imgDims.height}px${imageNode ? '（右隣に埋め込み）' : ''}`);
 if (dangling) console.log(`  !! 端点の無いコネクタ: ${dangling}`);
 for (const w of warnings) console.log('  注意: ' + w);

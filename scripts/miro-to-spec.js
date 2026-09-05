@@ -4,7 +4,7 @@
 // Miro REST API (v2) でボードの内容を取得し、scripts/board-from-spec.js 用の仕様 JSON に変換する。
 //
 // 使い方:
-//   node scripts/miro-to-spec.js <boardId または ボードURL> [出力 spec.json] [--dump <生JSONの保存先>]
+//   node scripts/miro-to-spec.js <boardId または ボードURL> [出力 spec.json] [--dump <生JSONの保存先>] [--images fit|original|preview|none]
 //
 // 認証: config/miro.json の { "token": "..." } または環境変数 MIRO_TOKEN（読み取り権限 boards:read）。
 // 出力: 仕様 JSON（省略時はスクラッチパッド相当として ./miro-<boardId>.spec.json）。
@@ -27,7 +27,26 @@ const urlMatch = boardId.match(/miro\.com\/app\/board\/([^/?#]+)/);
 if (urlMatch) boardId = decodeURIComponent(urlMatch[1]);
 const dumpIdx = argv.indexOf('--dump');
 const dumpPath = dumpIdx >= 0 ? argv[dumpIdx + 1] : null;
-const positional = argv.slice(1).filter((a, i, arr) => a !== '--dump' && arr[i - 1] !== '--dump');
+const imgIdx = argv.indexOf('--images');
+// fit: 原寸を取ってから src/image.js と同じ基準（長辺1600px・JPEG 0.85）で再エンコードする。
+// アプリは localStorage にボード全体を JSON で自動保存するため、画像が大きいと保存できなくなる。
+let imageMode = imgIdx >= 0 ? argv[imgIdx + 1] : 'fit';
+if (!['fit', 'preview', 'original', 'none'].includes(imageMode)) {
+  console.error('--images は fit / preview / original / none のいずれかです');
+  process.exit(1);
+}
+
+// sharp は optionalDependencies。無い環境でも原寸取り込みまでは動くようにする
+let sharp = null;
+try { sharp = require('sharp'); } catch (e) { /* 未インストール */ }
+if (imageMode === 'fit' && !sharp) {
+  console.error('警告: sharp が無いため画像を縮小できません。原寸のまま取り込みます。');
+  console.error('      `npm install` で sharp が入ると、--images fit で自動保存できるサイズに収まります。');
+  imageMode = 'original';
+}
+const imageFormat = imageMode === 'fit' ? 'original' : imageMode;
+const OPTS = ['--dump', '--images'];
+const positional = argv.slice(1).filter((a, i, arr) => !OPTS.includes(a) && !OPTS.includes(arr[i - 1]));
 let specOut = positional[0];
 
 // ---- トークン ----
@@ -55,6 +74,42 @@ async function paged(pathname) {
   } while (cursor);
   return out;
 }
+
+// 画像リソース（?redirect=false）は署名付き URL を返す JSON。それを辿って実体を取る
+async function fetchImageBytes(imageUrl, format) {
+  const url = imageUrl.replace(/format=[^&]*/, 'format=' + format);
+  const meta = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+  if (!meta.ok) throw new Error(`画像メタ ${meta.status}`);
+  const { url: signed } = await meta.json();
+  if (!signed) throw new Error('署名付き URL がありません');
+  const res = await fetch(signed);
+  if (!res.ok) throw new Error(`画像本体 ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+// src/image.js の compress と同じ基準で縮小・再エンコードする。
+// 長辺 1600px 以下へ縮小し、透過が無ければ白背景で JPEG 0.85、あれば PNG のまま。
+// 元より大きくなる場合は元データを使う（アプリ側の判断と同じ）。
+const MAX_EDGE = 1600, JPEG_QUALITY = 85;
+async function refit(buf) {
+  const img = sharp(buf, { failOn: 'none' });
+  const meta = await img.metadata();
+  // SVG / GIF は圧縮しない（SVG はベクタ、GIF はアニメが壊れる）
+  if (meta.format === 'svg' || meta.format === 'gif') return buf;
+  const long = Math.max(meta.width || 0, meta.height || 0);
+  const pipeline = long > MAX_EDGE ? img.resize({ width: meta.width >= meta.height ? MAX_EDGE : null, height: meta.height > meta.width ? MAX_EDGE : null }) : img;
+  // 実際に透明なピクセルがあるかを見る（アルファチャンネルの有無だけでは判断しない）
+  const transparent = meta.hasAlpha ? (await pipeline.clone().ensureAlpha().extractChannel('alpha').stats()).channels[0].min < 255 : false;
+  const out = transparent
+    ? await pipeline.clone().png({ compressionLevel: 9 }).toBuffer()
+    : await pipeline.clone().flatten({ background: '#ffffff' }).jpeg({ quality: JPEG_QUALITY }).toBuffer();
+  return out.length < buf.length ? out : buf;
+}
+
+const extOf = buf =>
+  buf[0] === 0x89 && buf.toString('ascii', 1, 4) === 'PNG' ? '.png'
+  : buf[0] === 0xff && buf[1] === 0xd8 ? '.jpg'
+  : buf.toString('ascii', 0, 3) === 'GIF' ? '.gif'
+  : buf.toString('ascii', 0, 4) === 'RIFF' ? '.webp' : '.bin';
 
 // ---- 変換ヘルパー ----
 const warnings = [];
@@ -131,6 +186,7 @@ const arrowOf = cap => cap && cap !== 'none';
   }
 
   const nodes = [];
+  const pendingImages = [];
   const nameOfId = new Map();
   const counts = {};
   const uniqueName = base => {
@@ -200,6 +256,11 @@ const arrowOf = cap => cap && cap !== 'none';
       nodes.push({ name, type: 'shape', shape: 'rect', content: '', cx: Math.round(c.x), cy: Math.round(c.y), w: Math.round(w), h: Math.round(h), bg: '#ffffff', border: '#cccccc' });
       nameOfId.set(it.id, name);
       if (title) nodes.push({ name: uniqueName('frame-title:' + title), type: 'text', content: title, cx: Math.round(c.x - w / 2 + 8 + title.length * 8), cy: Math.round(c.y - h / 2 - 16), fontSize: 16, color: '#757575', align: 'left' });
+    } else if (it.type === 'image' && imageFormat !== 'none' && d.imageUrl) {
+      const name = uniqueName('image-' + it.id);
+      const node = { name, type: 'image', src: '', cx: Math.round(c.x), cy: Math.round(c.y), w: Math.round(w), h: Math.round(h) };
+      nodes.push(node); nameOfId.set(it.id, name);
+      pendingImages.push({ node, url: d.imageUrl, id: it.id });
     } else {
       warnings.push(`未対応の要素をスキップ: ${it.type}（${it.id}）`);
     }
@@ -251,6 +312,34 @@ const arrowOf = cap => cap && cap !== 'none';
     nodes, edges
   };
   if (!specOut) specOut = path.join(process.cwd(), `miro-${safeName}.spec.json`);
+
+  // ---- 画像の実体を仕様ファイルの隣に保存し、相対パスで参照させる ----
+  if (pendingImages.length) {
+    const assetsDir = specOut.replace(/\.json$/, '') + '.assets';
+    fs.mkdirSync(assetsDir, { recursive: true });
+    let bytes = 0, saved = 0;
+    for (const p of pendingImages) {
+      try {
+        let buf = await fetchImageBytes(p.url, imageFormat);
+        if (imageMode === 'fit') {
+          const before = buf.length;
+          buf = await refit(buf);
+          saved += before - buf.length;
+        }
+        const file = path.join(assetsDir, p.id + extOf(buf));
+        fs.writeFileSync(file, buf);
+        p.node.src = path.relative(path.dirname(specOut), file);
+        bytes += buf.length;
+      } catch (e) {
+        warnings.push(`画像の取得に失敗（${p.id}）: ${e.message}`);
+        const i = spec.nodes.indexOf(p.node);
+        if (i >= 0) spec.nodes.splice(i, 1);
+      }
+    }
+    const ok = pendingImages.filter(p => p.node.src).length;
+    console.log(`画像: ${ok}/${pendingImages.length} 枚を取得（${imageMode}、計 ${(bytes / 1024).toFixed(0)} KB${saved ? `、${(saved / 1024).toFixed(0)} KB 削減` : ''}）→ ${assetsDir}`);
+  }
+
   fs.writeFileSync(specOut, JSON.stringify(spec, null, 2));
 
   console.log(`ボード: ${board.name}（${boardId}）`);

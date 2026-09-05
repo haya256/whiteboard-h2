@@ -22,12 +22,18 @@ Miro のアーカイブ（.rtb）は本体が暗号化されているため入�
 前提: `config/miro.json`（git 管理外）に `{ "token": "..." }`（boards:read 権限のアクセストークン）がある。無ければユーザーに配置を依頼する（トークンをチャットに貼らないよう伝える）。
 
 ```bash
-node scripts/miro-to-spec.js <ボードURL または ボードID> <spec.json の保存先> [--dump <生JSONの保存先>]
+node scripts/miro-to-spec.js <ボードURL または ボードID> <spec.json の保存先> [--dump <生JSONの保存先>] [--images fit|original|preview|none]
 node scripts/board-from-spec.js <spec.json>
 ```
 
 - ボード一覧は `GET https://api.miro.com/v2/boards` で確認できる（トークンのチーム内のボードのみ）。目的のボードが見つからなければ、そのボードをトークンのアカウント / チームに共有してもらう。
-- 変換の対応: 付箋（色はパレット5色に対応付け、文字サイズは付箋に収まる最大の段階を自動選択、正方形か 3:2 に丸める）、図形（塗り・枠線・文字）、テキスト、フレーム（薄い枠として再現）、コネクタ（矢印の向き・線種・色・太さ・ラベル）。同じ2要素間の複数コネクタは1本にまとめる。画像・埋め込み・カード等はスキップして警告に出す。
+- 変換の対応: 付箋（色はパレット5色に対応付け、文字サイズは付箋に収まる最大の段階を自動選択、正方形か 3:2 に丸める）、図形（塗り・枠線・文字）、テキスト、フレーム（薄い枠として再現）、画像、コネクタ（矢印の向き・線種・色・太さ・ラベル）。同じ2要素間の複数コネクタは1本にまとめる。リンクプレビュー・PDF・カード等はスキップして警告に出す（プレビューは Miro API v2 が `isSupported: false` で返し、URL もタイトルも含まれないので復元できない）。
+- 画像は `--images` で扱いを選ぶ。既定は `fit`。
+  - `fit`: 原寸を取得し、`src/image.js` と同じ基準（長辺1600px・JPEG 0.85・透過があれば PNG）で再エンコードする。sharp（optionalDependencies）が要る。無い場合は警告を出して `original` になる
+  - `original`: 原寸。画質は最高だがファイルが非常に大きくなる
+  - `preview`: Miro が返すサムネイルだが**長辺120px しかない**ので内容は読めない。目印にしかならない
+  - `none`: 取り込まない
+- **自動保存の上限に注意**: アプリは localStorage にボード全体を JSON で自動保存する（`src/io.js` の `save()`）。上限は概ね 5MB で、未保存判定の fingerprint も同じ大きさを消費するため、実質「ボード JSON × 2 < 5MB」に収める必要がある。.svg は data URI を `href` / `xlink:href` / `<metadata>` の3か所に持つので、ファイルサイズは元画像の約4倍になる。生成後は `<metadata>` の JSON サイズを確認し、超えていれば `fit` で作り直す。超えると自動保存が毎回失敗し、リロードで復元できず、未保存確認が常に出る。
 - 仕様 JSON は自動生成後に手で直せる（経路 A と同じ形式）。座標は Miro の値を左上原点に平行移動したもの。
 - 出力の警告（未対応要素・まとめたコネクタ）を報告に含める。
 
@@ -84,6 +90,7 @@ node scripts/board-from-spec.js <spec.json>
 - `sticky`: `size`（正方形）または `w` / `h`（3:2 なら w:h = 3:2 にする）、`bg`（`yellow` / `pink` / `blue` / `green` / `purple` か `#hex`。省略時 yellow）
 - `shape`: `shape`（rect / ellipse / diamond）、`w` / `h`、`bg`（省略時 白）、`border`（省略時 #4a90e2）
 - `text`: `w` / `h` は省略可（文字数から自動）
+- `image`: `src`（仕様ファイルからの相対パス・絶対パス・data URI のいずれか。ファイルは base64 で埋め込まれる）、`w` / `h`（省略時は画像の実サイズ）
 - `edges[]`: `from` / `to`（name）、`arrow`（none / end / start / both。省略時 end）、`line`（straight / curved / elbow。省略時 straight）、`color`（省略時 #333333）、`width`（省略時 2）、`label`（文字列、文字列の配列、または `{ text, offset:[dx,dy], fontSize, color }`。線の中点付近にテキストノードとして置かれる。配列の1つ目は線の上側、2つ目は下側にずれる）
 - 全体: `includeImage`（省略時 true。元画像を再現図の右隣に埋め込んで見比べられるようにする。1.5MB 超は自動で省略）、`scale`（画像px→ワールド倍率。省略時 1）、`output`（出力先を変えたいとき）、`viewport`
 

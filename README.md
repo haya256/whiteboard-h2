@@ -81,6 +81,32 @@ npm run serve    # ブラウザ版（http://localhost:8080）
 
 `.svg` ファイルとして保存されます。SVGとして任意のビューアで表示でき、openboardで再度読み込んで編集することもできます。
 
+## 変換スクリプト（任意）
+
+`scripts/` に、画像や Miro のボードから `.svg` を作るための Node スクリプトがあります。**アプリ本体とは独立していて、`index.html` を開くだけの使い方には一切関係しません**（アプリはゼロ依存のままです）。
+
+```bash
+node scripts/board-from-spec.js <spec.json>                 # 仕様 JSON から .svg を作る
+node scripts/miro-to-spec.js <boardURL|boardID> <spec.json> # Miro のボードから仕様 JSON を作る
+```
+
+Miro から取り込むには、`config/miro.json` に `{ "token": "..." }`（`boards:read` 権限のアクセストークン）を置きます。このファイルは公開しないよう .gitignore 済みなので、各自で用意してください。
+
+### 画像の取り込み
+
+`miro-to-spec.js` の `--images` で、画像をどう取り込むか選べます。
+
+| 値 | 内容 |
+|---|---|
+| `fit`（既定） | 原寸を取得し、アプリの画像追加と同じ基準（長辺1600px・JPEG 品質0.85・透過があれば PNG）で再エンコードする |
+| `original` | 原寸のまま埋め込む。画質は最高だが、自動保存の上限（約5MB）を超えやすい |
+| `preview` | Miro が返す長辺120pxのサムネイル。極端に軽いが内容は読めない |
+| `none` | 画像を取り込まない |
+
+`fit` には [sharp](https://sharp.pixelplumbing.com/) が必要です。`optionalDependencies` なので `npm install` で一緒に入りますが、環境によってビルドできなくてもインストール全体は失敗しません。sharp が無い場合は警告を出して `original` として動作します。
+
+`.svg` は画像を data URI で持ち、しかも `href` / `xlink:href` / 埋め込み JSON の3か所に入るため、**元画像の約4倍**の大きさになります。自動保存を効かせたい場合は `fit` を使ってください。
+
 ## WSL2 での注意
 
 初回のみ以下のライブラリが必要です：

@@ -14,5 +14,8 @@
   },
   "devDependencies": {
     "electron": "^35.0.0"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.4"
   }
 }
