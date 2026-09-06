@@ -185,9 +185,12 @@
     linkPopover.classList.remove('editing');
 
     const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    // 外部で作られた .svg 由来の危険なスキーム（javascript: など）はリンクにせず文字として見せるだけにする
+    if (isOpenableUrl(url)) {
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+    }
     a.title = url;
     a.textContent = url;
 
@@ -335,6 +338,61 @@
     closeLinkPopover();
     commit();
   }
+
+  // ---- リンクバッジ（ノード右上の🔗）を直接クリックしてリンクを開く ----
+
+  // 保存時に https:// を補っているので通常は http(s) だが、外部で作られた .svg を読み込んだ場合は
+  // javascript: のような危険なスキームが混ざりうるため、開く直前にも確認する
+  function isOpenableUrl(url) {
+    return typeof url === 'string' && /^https?:\/\//i.test(url);
+  }
+
+  // バッジのクリックで別タブに開く（ノードの選択・ドラッグは行わない）
+  function openNodeLink(nodeId) {
+    const url = Model.getLink(nodeId);
+    if (!isOpenableUrl(url)) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  // ---- リンクバッジのツールチップ（ホバー中に URL を表示する） ----
+
+  const linkTooltip = document.getElementById('link-tooltip');
+
+  function hideLinkTooltip() {
+    linkTooltip.classList.remove('open');
+    linkTooltip.textContent = '';
+  }
+
+  // バッジ（ノード右上）の少し下に出す。画面からはみ出す場合は左右を画面内に収める
+  function showLinkTooltip(nodeId) {
+    const node = Model.findById(nodeId);
+    const url = node && Model.getLink(nodeId);
+    if (!url) return;
+
+    linkTooltip.textContent = url;
+    linkTooltip.classList.add('open');
+
+    const pos = View.worldToScreen(node.x + node.width, node.y);
+    const width = linkTooltip.getBoundingClientRect().width;
+    const left = Math.min(Math.max(8, pos.x - width), window.innerWidth - width - 8);
+    linkTooltip.style.left = Math.round(left) + 'px';
+    linkTooltip.style.top = Math.round(pos.y + 24) + 'px';
+  }
+
+  canvas.addEventListener('mouseover', e => {
+    const badge = e.target.closest('.link-badge');
+    if (!badge) return;
+    const nodeEl = badge.closest('.node');
+    if (nodeEl) showLinkTooltip(nodeEl.dataset.id);
+  });
+
+  canvas.addEventListener('mouseout', e => {
+    const badge = e.target.closest('.link-badge');
+    if (!badge) return;
+    // 当たり判定の矩形と絵文字の間を移動しただけのときは消さない（ちらつき防止）
+    if (e.relatedTarget && badge.contains(e.relatedTarget)) return;
+    hideLinkTooltip();
+  });
 
   // Ctrl/Cmd+K：単一選択時のみ、リンク編集ポップオーバーを開く
   document.addEventListener('keydown', e => {
@@ -1337,6 +1395,12 @@
       return;
     }
 
+    // ---- リンクバッジ：選択もドラッグもせず、mouseup（click）でリンクを開くだけにする ----
+    if (e.target.closest('.link-badge')) {
+      e.preventDefault();
+      return;
+    }
+
     const handleEl = e.target.closest('.resize-handle');
     if (handleEl) {
       e.preventDefault();
@@ -1448,10 +1512,24 @@
     refreshTextStylePopover();
   }
 
+  // ---- リンクバッジのクリックでリンクを開く ----
+  // mousedown 側で選択・ドラッグを止めているので、ここはリンクを開くだけでよい。
+  // 接続モード中はコネクタ作成を優先し、リンクは開かない。
+  canvas.addEventListener('click', e => {
+    const badge = e.target.closest('.link-badge');
+    if (!badge || connectMode) return;
+    const nodeEl = badge.closest('.node');
+    if (!nodeEl) return;
+    hideLinkTooltip();
+    openNodeLink(nodeEl.dataset.id);
+  });
+
   // ---- ダブルクリックでテキスト編集 ----
 
   canvas.addEventListener('dblclick', e => {
     if (connectMode) return;
+    // リンクバッジのダブルクリックでテキスト編集に入らないようにする
+    if (e.target.closest('.link-badge')) return;
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) return;
 
@@ -1693,7 +1771,9 @@
     if (linkPopover.classList.contains('open') && !linkPopover.contains(e.target)) closeLinkPopover();
     // テキストスタイルポップオーバーの外側をクリックしたら閉じる（保険。各操作開始点でも個別に閉じている）
     if (textStylePopover.classList.contains('open') && !textStylePopover.contains(e.target)) closeTextStylePopover();
+    // ドラッグ・パンが始まるとバッジの位置がずれるため、リンクのツールチップは閉じる
+    if (!e.target.closest('.link-badge')) hideLinkTooltip();
   });
-  document.addEventListener('scroll', hideContextMenu, true);
-  canvas.addEventListener('wheel', hideContextMenu);
+  document.addEventListener('scroll', () => { hideContextMenu(); hideLinkTooltip(); }, true);
+  canvas.addEventListener('wheel', () => { hideContextMenu(); hideLinkTooltip(); });
 })();

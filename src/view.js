@@ -103,15 +103,36 @@ const View = (() => {
 
   // ---- リンクアイコン（ノード右上の小さなマーク） ----
   // node.link が設定されているノードにだけ表示する。位置はノード幅に応じて右寄せする。
+  // クリックでリンクを開けるよう、絵文字より少し広い透明な当たり判定（.link-badge-hit）を重ねた
+  // <g> にしている。右上のリサイズハンドル（角に 8px 四方）と重ならない範囲に収めている。
+
+  // バッジの基準点（絵文字の右下）をノードのローカル座標で返す
+  function linkBadgeAnchor(width) {
+    return { x: width - 6, y: 15 };
+  }
 
   function makeLinkBadge(node) {
-    const el = document.createElementNS(SVG_NS, 'text');
-    el.classList.add('link-badge');
-    el.setAttribute('text-anchor', 'end');
-    el.setAttribute('x', node.width - 6);
-    el.setAttribute('y', 15);
-    el.textContent = '🔗';
-    return el;
+    const a = linkBadgeAnchor(node.width);
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.classList.add('link-badge');
+    g.setAttribute('transform', `translate(${a.x},${a.y})`);
+
+    const hit = document.createElementNS(SVG_NS, 'rect');
+    hit.classList.add('link-badge-hit');
+    hit.setAttribute('x', -20);
+    hit.setAttribute('y', -15);
+    hit.setAttribute('width', 18);
+    hit.setAttribute('height', 20);
+
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('text-anchor', 'end');
+    text.setAttribute('x', 0);
+    text.setAttribute('y', 0);
+    text.textContent = '🔗';
+
+    g.appendChild(hit);
+    g.appendChild(text);
+    return g;
   }
 
   // 生成済みの<g>要素にリンクバッジが必要なら付与する（各 make*El 共通処理）
@@ -625,7 +646,10 @@ const View = (() => {
 
       // リンクバッジは幅に応じて右寄せしているため、リサイズのたびに位置を合わせ直す
       const badge = el.querySelector('.link-badge');
-      if (badge) badge.setAttribute('x', w - 6);
+      if (badge) {
+        const a = linkBadgeAnchor(w);
+        badge.setAttribute('transform', `translate(${a.x},${a.y})`);
+      }
 
       if (node.type === 'shape') {
         const bg = el.querySelector('.shape-bg');
@@ -776,7 +800,10 @@ const View = (() => {
       let badge = el.querySelector('.link-badge');
       if (node.link) {
         if (!badge) el.appendChild(makeLinkBadge(node));
-        else badge.setAttribute('x', node.width - 6);
+        else {
+          const a = linkBadgeAnchor(node.width);
+          badge.setAttribute('transform', `translate(${a.x},${a.y})`);
+        }
       } else if (badge) {
         badge.remove();
       }

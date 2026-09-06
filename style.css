@@ -472,10 +472,22 @@ html, body {
 }
 
 /* ---- リンクバッジ（ノード右上の🔗マーク） ---- */
+/* クリックでリンクを開く小さなボタン。ノード本体のドラッグ・選択とは別扱いにする */
 .link-badge {
   font-size: 13px;
-  pointer-events: none; /* クリックはノード本体に通す */
+  cursor: pointer;
   user-select: none;
+}
+
+/* 絵文字だけでは的が小さいので、透明な矩形を重ねて当たり判定を広げる。
+   fill:none のままでも当たるよう pointer-events: all を指定する */
+.link-badge-hit {
+  fill: none;
+  pointer-events: all;
+}
+
+.link-badge:hover text {
+  opacity: 0.6;
 }
 
 /* ---- 矩形選択（ラバーバンド） ---- */
@@ -624,6 +636,30 @@ html, body {
 
 #link-popover input#link-input:focus {
   border-color: #7aa2f7;
+}
+
+/* ---- リンクバッジのツールチップ（ホバー中にURLを表示する） ---- */
+/* ポップオーバーと同じ見た目に揃える。ホバー中に出すだけなのでクリックは受け取らない */
+#link-tooltip {
+  position: fixed;
+  display: none;
+  max-width: 360px;
+  background: #1a1b26;
+  color: #c0caf5;
+  border-radius: 6px;
+  padding: 5px 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  z-index: 160;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+#link-tooltip.open {
+  display: block;
 }
 
 /* ---- テキストスタイル編集ポップオーバー（文字サイズ・色・太字・横位置） ---- */

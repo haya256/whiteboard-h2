@@ -71,6 +71,7 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   overflow: hidden;
 }
 .link-badge { font-size: 13px; }
+.link-badge-hit { fill: none; } /* クリック用の当たり判定。塗らずに透明のままにする */
 .resize-handle { display: none; }
 `;
 
