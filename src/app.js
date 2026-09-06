@@ -1178,7 +1178,7 @@
   let pan = null;
   let spacePressed = false;
   let suppressContextMenu = false; // 右ボタンドラッグでパンした直後の contextmenu を抑止する
-  const PAN_CLICK_THRESHOLD = 3; // これ未満の移動は「クリック」（選択解除）とみなす
+  const PAN_CLICK_THRESHOLD = 3; // これ未満の移動は「クリック」とみなす（右ボタンのメニュー抑止の判定に使う）
 
   function onPanMove(e) {
     const dx = e.clientX - pan.startX;
@@ -1188,11 +1188,6 @@
   }
 
   function onPanUp() {
-    if (pan && pan.deselectOnClick && !pan.moved) {
-      Model.select(null);
-      View.selectNode(null);
-      View.selectEdge(null);
-    }
     if (pan && pan.moved) scheduleSave();
     // 右ボタンドラッグでパンした場合は、mouseup 直後に発火する contextmenu を抑止する
     if (pan && pan.button === 2 && pan.moved) suppressContextMenu = true;
@@ -1200,17 +1195,17 @@
     canvas.classList.remove('panning');
     document.removeEventListener('mousemove', onPanMove);
     document.removeEventListener('mouseup', onPanUp);
-    refreshTextStylePopover(); // パンで表示位置がずれるため出し直す（クリックで選択解除した場合は閉じる）
+    refreshTextStylePopover(); // パンで表示位置がずれるため出し直す
   }
 
-  function startPan(e, deselectOnClick) {
+  function startPan(e) {
     e.preventDefault();
     closeTextStylePopover();
     const vp = View.getViewport();
     pan = {
       startX: e.clientX, startY: e.clientY,
       origX: vp.x, origY: vp.y, origZoom: vp.zoom,
-      moved: false, deselectOnClick: !!deselectOnClick,
+      moved: false,
       button: e.button
     };
     canvas.classList.add('panning');
@@ -1223,7 +1218,7 @@
   let drag = null;
   let resize = null;
   let editing = false;
-  let rubberBand = null; // 矩形選択（Shift+空白ドラッグ）の状態
+  let rubberBand = null; // 矩形選択（空白部分の左ドラッグ）の状態
 
   const MIN_SIZE = 40;
 
@@ -1336,9 +1331,13 @@
 
   function onRubberUp() {
     const { x, y, w, h } = rubberBand.rect;
-    const ids = Model.getNodes()
+    const hit = Model.getNodes()
       .filter(n => rectsIntersect(x, y, w, h, n.x, n.y, n.width, n.height))
       .map(n => n.id);
+    // Shift/Ctrl+ドラッグ：既存の選択を残したまま、囲んだノードを追加する
+    const ids = rubberBand.additive
+      ? Array.from(new Set([...rubberBand.baseIds, ...hit]))
+      : hit;
     Model.selectMany(ids);
     View.selectNodes(ids);
     View.selectEdge(null);
@@ -1350,12 +1349,15 @@
     refreshTextStylePopover();
   }
 
-  function startRubberBand(e) {
+  function startRubberBand(e, additive) {
     e.preventDefault();
+    closeTextStylePopover();
     const pt = View.svgPoint(e);
     rubberBand = {
       startX: pt.x, startY: pt.y,
       rect: { x: pt.x, y: pt.y, w: 0, h: 0 },
+      additive: !!additive,
+      baseIds: additive ? Model.getSelectedIds() : [],
       el: View.showRubberBand(pt.x, pt.y, 0, 0)
     };
     document.addEventListener('mousemove', onRubberMove);
@@ -1367,7 +1369,7 @@
 
     // ---- 右ボタンドラッグ：対象を問わずキャンバスのパンのみ（選択・移動はしない） ----
     if (e.button === 2) {
-      startPan(e, false);
+      startPan(e);
       return;
     }
 
@@ -1391,7 +1393,7 @@
 
     // ---- パン：中ボタン、または Space キー押下中は対象を問わずドラッグでパンする ----
     if (e.button === 1 || spacePressed) {
-      startPan(e, false);
+      startPan(e);
       return;
     }
 
@@ -1438,14 +1440,9 @@
 
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) {
-      // Shift+空白ドラッグ：矩形選択（ラバーバンド）
-      if (e.shiftKey) {
-        startRubberBand(e);
-        return;
-      }
-      // 空白ドラッグ：そのままパン候補として開始する。
-      // 移動量がほぼ0のままマウスアップした場合のみ「クリックで選択解除」を行う（従来の挙動を維持）。
-      startPan(e, true);
+      // 空白の左ドラッグ：矩形選択（ラバーバンド）。パンは右ボタン / 中ボタン / Space+ドラッグで行う。
+      // 移動せずにマウスアップした場合は空の矩形になるため、従来どおり「クリックで選択解除」になる。
+      startRubberBand(e, e.shiftKey || e.ctrlKey || e.metaKey);
       return;
     }
 
