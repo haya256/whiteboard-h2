@@ -364,7 +364,7 @@ const Model = (() => {
         id: crypto.randomUUID(),
         type: 'connector',
         from, to,
-        style: { line: 'straight', arrow: 'end', color: '#333333', width: 2 }
+        style: { line: 'curved', arrow: 'end', color: '#333333', width: 2 }
       };
       _edges.push(edge);
       return edge;
