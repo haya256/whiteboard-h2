@@ -1544,6 +1544,39 @@
     commit();
   }
 
+  // ---- 選択中のノードを複製する（Ctrl+D・右クリックメニュー共通処理） ----
+
+  const DUPLICATE_OFFSET = 24; // 複製したノードを元からずらす量（px。挿入時のカスケードと同じ）
+
+  function duplicateSelected() {
+    const ids = Model.getSelectedIds();
+    if (!ids.length) return;
+
+    const { nodes, edges } = Model.duplicateNodes(ids, DUPLICATE_OFFSET, DUPLICATE_OFFSET);
+    if (!nodes.length) return;
+
+    nodes.forEach(n => View.addNode(n));
+    edges.forEach(e => View.addEdge(e));
+    // 複製直後は複製側を選択する（そのまま続けて複製すると階段状に増える）
+    Model.selectMany(nodes.map(n => n.id));
+    View.selectNodes(Model.getSelectedIds());
+    View.selectEdge(null);
+    closeLinkPopover(); // 元ノードに対して開いていた場合は閉じる
+    refreshTextStylePopover();
+    commit();
+  }
+
+  // Ctrl/Cmd+D：選択中のノードを複製する（ブラウザのブックマーク登録は抑止する）
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'd') return;
+    if (editing || connectMode) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (!Model.getSelectedIds().length) return;
+    e.preventDefault();
+    duplicateSelected();
+  });
+
   // ---- 重なり順（Z順）の変更 ----
   // Model.bringToFront/sendToBack/bringForward/sendBackward はいずれも
   // 配列順（= 重なり順）を書き換えて変化の有無（true/false）を返す。
@@ -1644,6 +1677,7 @@
     const action = btn.dataset.action;
     hideContextMenu();
 
+    if (action === 'duplicate') { duplicateSelected(); return; }
     if (action === 'delete') { deleteSelected(); return; }
     if (action === 'link-set' || action === 'link-edit') { openLinkEditorForSelection(); return; }
     if (action === 'link-remove') { removeLinkFromSelected(); return; }

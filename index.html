@@ -83,8 +83,10 @@
   </div>
   <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
 
-  <!-- 右クリックメニュー（リンクの設定・重なり順の変更・削除） -->
+  <!-- 右クリックメニュー（複製・リンクの設定・重なり順の変更・削除） -->
   <div id="context-menu">
+    <button data-action="duplicate">複製</button>
+    <div class="context-menu-sep"></div>
     <button data-action="link-set">🔗 リンクを設定…</button>
     <button data-action="link-edit">🔗 リンクを編集…</button>
     <button data-action="link-remove">🔗 リンクを削除</button>
@@ -143,9 +145,10 @@
         <li>文字の編集：ノードをダブルクリック。</li>
         <li>移動・複数選択：ドラッグで移動、<kbd>Shift</kbd>+クリックまたは何もない場所を <kbd>Shift</kbd>+ドラッグで複数選択。</li>
         <li>削除：選択して <kbd>Delete</kbd>。</li>
+        <li>複製：選択して <kbd>Ctrl</kbd>+<kbd>D</kbd>、または右クリックメニューの「複製」。</li>
         <li>つなぐ：「挿入」の「→ コネクタ」を押してから2つのノードをクリック。</li>
         <li>ズームとパン：マウスホイールでズーム、何もない場所のドラッグまたは右ボタンドラッグでパン。</li>
-        <li>右クリックメニュー：リンクの設定や重なり順の変更・削除ができます。</li>
+        <li>右クリックメニュー：複製やリンクの設定、重なり順の変更・削除ができます。</li>
       </ul>
 
       <details class="welcome-section">

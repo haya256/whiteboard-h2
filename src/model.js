@@ -277,6 +277,40 @@ const Model = (() => {
       return { type: 'node', nodeIds: [id], edgeIds };
     },
 
+    // ids のノードを複製し、dx, dy だけずらした位置に新しいIDで追加する。
+    // 両端とも ids に含まれるコネクタも一緒に複製して、複製後のノード同士をつなぎ直す
+    // （片側だけが対象のコネクタは複製しない）。
+    // 複製したノード・エッジは配列末尾（＝最前面）へ、元の重なり順を保ったまま積む。
+    // 選択状態は変更しない（呼び出し側で selectMany する）。戻り値は { nodes, edges }。
+    duplicateNodes(ids, dx, dy) {
+      const idSet = new Set(ids || []);
+      if (idSet.size === 0) return { nodes: [], edges: [] };
+
+      // style はネストしたオブジェクトなので個別にコピーする（History.cloneNode と同じ方針。
+      // 画像の src のような長い文字列は不変なので参照を共有したままでよい）
+      const idMap = new Map(); // 元ID → 複製後のID
+      const nodes = _nodes.filter(n => idSet.has(n.id)).map(n => {
+        const copy = Object.assign({}, n, { id: crypto.randomUUID(), x: n.x + dx, y: n.y + dy });
+        if (n.style) copy.style = Object.assign({}, n.style);
+        idMap.set(n.id, copy.id);
+        return copy;
+      });
+
+      const edges = _edges.filter(e => idMap.has(e.from) && idMap.has(e.to)).map(e => {
+        const copy = Object.assign({}, e, {
+          id: crypto.randomUUID(),
+          from: idMap.get(e.from),
+          to: idMap.get(e.to)
+        });
+        if (e.style) copy.style = Object.assign({}, e.style);
+        return copy;
+      });
+
+      _nodes.push(...nodes);
+      _edges.push(...edges);
+      return { nodes, edges };
+    },
+
     // ---- 重なり順（Z順）の変更 ----
     // いずれも ids（配列）を受け取り、選択ノード同士の相対順序を維持したまま並べ替える。
     // 変化があれば true、既に最前面/最背面などで変化がなければ false を返す。
