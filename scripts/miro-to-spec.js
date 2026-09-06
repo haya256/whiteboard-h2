@@ -7,6 +7,7 @@
 //   node scripts/miro-to-spec.js <boardId または ボードURL> [出力 spec.json] [--dump <生JSONの保存先>] [--images fit|original|preview|none]
 //
 // 認証: config/miro.json の { "token": "..." } または環境変数 MIRO_TOKEN（読み取り権限 boards:read）。
+// v2 が読めない要素（isSupported: false）があるときだけ、補助として旧 v1 API の widgets も引く。
 // 出力: 仕様 JSON（省略時はスクラッチパッド相当として ./miro-<boardId>.spec.json）。
 //       仕様の output は data/<ボード名>_edited.svg になる。
 
@@ -15,6 +16,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const API = 'https://api.miro.com/v2';
+const API_V1 = 'https://api.miro.com/v1';
 
 // ---- 引数 ----
 const argv = process.argv.slice(2);
@@ -73,6 +75,22 @@ async function paged(pathname) {
     cursor = page.cursor || null;
   } while (cursor);
   return out;
+}
+
+// v2 が読めない要素の補助に旧 v1 API を使う。v1 でしか取れないもの:
+//   - リンクプレビューの url / title（v2 は isSupported: false で位置と大きさしか返さない）
+//   - 未対応要素の本当の種類（例: v2 が shape と呼ぶものが実は stencil）
+// v1 は非推奨で予告なく止まりうるため、失敗しても警告だけ出して続行する。
+async function fetchV1Widgets() {
+  try {
+    const res = await fetch(`${API_V1}/boards/${encodeURIComponent(boardId)}/widgets`, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const j = await res.json();
+    return new Map((j.data || []).map(w => [w.id, w]));
+  } catch (e) {
+    warnings.push(`旧 API (v1) から補助情報を取れませんでした（プレビューは復元できません）: ${e.message}`);
+    return new Map();
+  }
 }
 
 // 画像リソース（?redirect=false）は署名付き URL を返す JSON。それを辿って実体を取る
@@ -166,7 +184,10 @@ const arrowOf = cap => cap && cap !== 'none';
   const board = await api(`/boards/${enc}`);
   const items = await paged(`/boards/${enc}/items`);
   const connectors = await paged(`/boards/${enc}/connectors`);
-  if (dumpPath) fs.writeFileSync(dumpPath, JSON.stringify({ board, items, connectors }, null, 2));
+  // v2 が読めない要素があるときだけ v1 を叩く（非推奨 API なので必要最小限にする）
+  const needsV1 = items.some(it => it.isSupported === false || it.type === 'preview');
+  const v1 = needsV1 ? await fetchV1Widgets() : new Map();
+  if (dumpPath) fs.writeFileSync(dumpPath, JSON.stringify({ board, items, connectors, v1: [...v1.values()] }, null, 2));
 
   const byId = new Map(items.map(it => [it.id, it]));
 
@@ -238,6 +259,7 @@ const arrowOf = cap => cap && cap !== 'none';
         align: s.textAlign || 'center', valign: VALIGN_MAP[s.textAlignVertical] || 'middle'
       };
       if (isBold(d.content)) node.bold = true;
+      if (it.isSupported === false) warnings.push(`スタイルを取得できない要素（${v1.get(it.id)?.type || it.type}）を既定の枠で描きました: ${it.id}`);
       nodes.push(node); nameOfId.set(it.id, name);
     } else if (it.type === 'text') {
       const content = htmlToText(d.content);
@@ -261,8 +283,23 @@ const arrowOf = cap => cap && cap !== 'none';
       const node = { name, type: 'image', src: '', cx: Math.round(c.x), cy: Math.round(c.y), w: Math.round(w), h: Math.round(h) };
       nodes.push(node); nameOfId.set(it.id, name);
       pendingImages.push({ node, url: d.imageUrl, id: it.id });
+    } else if (it.type === 'preview') {
+      // リンクプレビュー。v2 は位置と大きさしか返さないので、タイトルと URL は v1 から補う
+      const w1 = v1.get(it.id) || {};
+      if (!w1.url) { warnings.push(`リンクプレビューの URL を取得できずスキップ: ${it.id}`); continue; }
+      const title = htmlToText(w1.title) || w1.url;
+      const name = uniqueName(title.split('\n')[0]);
+      nodes.push({
+        name, type: 'shape', shape: 'rect', content: title,
+        cx: Math.round(c.x), cy: Math.round(c.y), w: Math.round(w), h: Math.round(h),
+        fontSize: fitFontSize(title, w, h),
+        bg: '#ffffff', border: '#cccccc', color: '#1a1a1a',
+        align: 'center', valign: 'middle', link: w1.url
+      });
+      nameOfId.set(it.id, name);
     } else {
-      warnings.push(`未対応の要素をスキップ: ${it.type}（${it.id}）`);
+      const kind = v1.get(it.id)?.type;
+      warnings.push(`未対応の要素をスキップ: ${kind && kind !== it.type ? `${it.type} / v1 では ${kind}` : it.type}（${it.id}）`);
     }
   }
   // フレームは他の要素の下に来るよう先頭へ
