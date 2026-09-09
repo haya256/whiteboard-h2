@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const Shapes = require('../src/shapes.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const XHTML = 'http://www.w3.org/1999/xhtml';
@@ -322,12 +323,11 @@ const edgeParts = edges.map(e => {
 parts.push(`<defs>${[...markers.values()].join('')}</defs>`);
 parts.push(...edgeParts);
 
+// 形の定義はアプリと同じ src/shapes.js を使う（二重管理をしない）
 function shapeBg(n) {
   const { width: w, height: h, style: s } = n;
-  const common = `class="shape-bg" fill="${s.background}" stroke="${s.border}" stroke-width="2"`;
-  if (n.shape === 'ellipse') return `<ellipse ${common} cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}"/>`;
-  if (n.shape === 'diamond') return `<polygon ${common} points="${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}"/>`;
-  return `<rect ${common} width="${w}" height="${h}" rx="8"/>`;
+  return `<path class="shape-bg" d="${Shapes.pathD(n.shape, w, h)}" fill="${s.background}" fill-rule="evenodd" `
+       + `stroke="${s.border}" stroke-width="2"/>`;
 }
 function linkWrap(n, inner) {
   if (!n.link) return inner;
@@ -343,7 +343,7 @@ for (const n of allNodes) {
   } else if (n.type === 'sticky') {
     g = `<g class="node sticky" data-id="${n.id}" transform="translate(${n.x},${n.y})"><rect class="sticky-bg" width="${n.width}" height="${n.height}" rx="6" fill="${s.background}"/><foreignObject class="sticky-fo" width="${n.width}" height="${n.height}"><div xmlns="${XHTML}" class="sticky-text-wrap text-valign-wrap" style="align-items: ${VALIGN[s.valign] || 'center'};"><div class="sticky-text" style="${textStyle}">${br(n.content)}</div></div></foreignObject></g>`;
   } else if (n.type === 'shape') {
-    g = `<g class="node shape" data-id="${n.id}" transform="translate(${n.x},${n.y})">${shapeBg(n)}<foreignObject class="shape-fo" width="${n.width}" height="${n.height}"><div xmlns="${XHTML}" class="shape-text-wrap text-valign-wrap" style="align-items: ${VALIGN[s.valign] || 'center'};"><div class="shape-text" style="${textStyle}">${br(n.content)}</div></div></foreignObject></g>`;
+    g = `<g class="node shape" data-id="${n.id}" transform="translate(${n.x},${n.y})">${shapeBg(n)}<foreignObject class="shape-fo" x="${Shapes.textBox(n.shape, n.width, n.height).x}" y="${Shapes.textBox(n.shape, n.width, n.height).y}" width="${Shapes.textBox(n.shape, n.width, n.height).width}" height="${Shapes.textBox(n.shape, n.width, n.height).height}"><div xmlns="${XHTML}" class="shape-text-wrap text-valign-wrap" style="align-items: ${VALIGN[s.valign] || 'center'};"><div class="shape-text" style="${textStyle}">${br(n.content)}</div></div></foreignObject></g>`;
   } else if (n.type === 'text') {
     g = `<g class="node text-node" data-id="${n.id}" transform="translate(${n.x},${n.y})"><rect class="text-frame" width="${n.width}" height="${n.height}" fill="transparent"/><foreignObject class="text-fo" width="${n.width}" height="${n.height}"><div xmlns="${XHTML}" class="text-content" style="${textStyle}">${br(n.content)}</div></foreignObject></g>`;
   }

@@ -201,9 +201,11 @@ const Model = (() => {
       return node;
     },
 
-    // cx, cy（ワールド座標）を中心として図形を配置する
+    // cx, cy（ワールド座標）を中心として図形を配置する。
+    // 既定サイズは図形ごと（src/shapes.js のカタログ。指定がなければ 160×120）
     addShape(shape, cx, cy) {
-      const W = 160, H = 120;
+      const size = Shapes.defaultSize(shape);
+      const W = size.w, H = size.h;
       const node = {
         id: crypto.randomUUID(),
         type: 'shape',

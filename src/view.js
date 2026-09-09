@@ -182,28 +182,24 @@ const View = (() => {
 
   // ---- 図形のSVG要素を生成 ----
 
+  // 形は src/shapes.js のカタログが持つ。ここは種類によらず <path> 1本を作るだけ
   function makeShapeBg(shape, w, h, style) {
-    let el;
-    if (shape === 'rect') {
-      el = document.createElementNS(SVG_NS, 'rect');
-      el.setAttribute('width', w);
-      el.setAttribute('height', h);
-      el.setAttribute('rx', '8');
-    } else if (shape === 'ellipse') {
-      el = document.createElementNS(SVG_NS, 'ellipse');
-      el.setAttribute('cx', w / 2);
-      el.setAttribute('cy', h / 2);
-      el.setAttribute('rx', w / 2);
-      el.setAttribute('ry', h / 2);
-    } else {
-      // diamond
-      el = document.createElementNS(SVG_NS, 'polygon');
-      el.setAttribute('points', `${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}`);
-    }
+    const el = document.createElementNS(SVG_NS, 'path');
+    el.setAttribute('d', Shapes.pathD(shape, w, h));
     el.setAttribute('fill', style.background);
+    el.setAttribute('fill-rule', 'evenodd');
     el.setAttribute('stroke', style.border);
     el.setAttribute('stroke-width', '2');
     return el;
+  }
+
+  // 図形の文字領域（はみ出しやすい図形はカタログの pad で内側に寄せる）
+  function applyShapeTextBox(fo, shape, w, h) {
+    const box = Shapes.textBox(shape, w, h);
+    fo.setAttribute('x', box.x);
+    fo.setAttribute('y', box.y);
+    fo.setAttribute('width', box.width);
+    fo.setAttribute('height', box.height);
   }
 
   function makeShapeEl(node) {
@@ -219,8 +215,7 @@ const View = (() => {
 
     const fo = document.createElementNS(SVG_NS, 'foreignObject');
     fo.classList.add('shape-fo');
-    fo.setAttribute('width', w);
-    fo.setAttribute('height', h);
+    applyShapeTextBox(fo, node.shape, w, h);
 
     const wrap = document.createElementNS(XHTML_NS, 'div');
     wrap.className = 'shape-text-wrap text-valign-wrap';
@@ -654,20 +649,10 @@ const View = (() => {
 
       if (node.type === 'shape') {
         const bg = el.querySelector('.shape-bg');
-        if (node.shape === 'rect') {
-          bg.setAttribute('width', w);
-          bg.setAttribute('height', h);
-        } else if (node.shape === 'ellipse') {
-          bg.setAttribute('cx', w / 2);
-          bg.setAttribute('cy', h / 2);
-          bg.setAttribute('rx', w / 2);
-          bg.setAttribute('ry', h / 2);
-        } else {
-          bg.setAttribute('points', `${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}`);
-        }
+        bg.setAttribute('d', Shapes.pathD(node.shape, w, h));
 
         const fo = el.querySelector('.shape-fo');
-        if (fo) { fo.setAttribute('width', w); fo.setAttribute('height', h); }
+        if (fo) applyShapeTextBox(fo, node.shape, w, h);
       } else if (node.type === 'image') {
         const img = el.querySelector('.image-el');
         const frame = el.querySelector('.image-frame');

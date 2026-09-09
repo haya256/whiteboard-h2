@@ -924,18 +924,95 @@
     refreshTextStylePopover();
   });
 
-  ['rect', 'ellipse', 'diamond'].forEach(shape => {
-    document.getElementById(`btn-add-${shape}`).addEventListener('click', () => {
-      const p = nextInsertPoint();
-      const node = Model.addShape(shape, p.x, p.y);
-      View.addNode(node);
-      lastInsertedId = node.id;
-      Model.select(node.id);
-      renderSelection();
-      commit();
-      refreshTextStylePopover();
+  // ---- 図形の追加 ----
+  // 形の一覧は src/shapes.js のカタログが持ち、UI は左の図形パレットに集約している
+
+  function insertShape(shapeId) {
+    const p = nextInsertPoint();
+    const node = Model.addShape(shapeId, p.x, p.y);
+    View.addNode(node);
+    lastInsertedId = node.id;
+    Model.select(node.id);
+    renderSelection();
+    commit();
+    refreshTextStylePopover();
+  }
+
+  // ---- 図形パレット（部品置き場） ----
+  // 「挿入」の「◇ 図形」で開閉する左のサイドパネル。開くと #canvas がその分だけ狭まるが、
+  // 座標変換は #canvas の実寸を見ているので位置合わせの処理は要らない。
+
+  const shapePalette = document.getElementById('shape-palette');
+  const shapePaletteBtn = document.getElementById('btn-shapes');
+  const PALETTE_KEY = 'openboard.palette';
+
+  // サムネイルは実際の描画と同じ Shapes.pathD() で作るので、形の定義とズレようがない
+  function buildShapePalette() {
+    const body = document.getElementById('palette-body');
+    const W = 30, H = 24;
+    Shapes.CATEGORIES.forEach(cat => {
+      const items = Shapes.CATALOG.filter(sh => sh.category === cat.key);
+      if (!items.length) return;
+
+      const head = document.createElement('div');
+      head.className = 'palette-category';
+      head.textContent = cat.label;
+      body.appendChild(head);
+
+      const grid = document.createElement('div');
+      grid.className = 'palette-grid';
+      items.forEach(shape => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'palette-item';
+        btn.title = shape.label;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', `-1 -1 ${W + 2} ${H + 2}`);
+        svg.setAttribute('width', W + 2);
+        svg.setAttribute('height', H + 2);
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', Shapes.pathD(shape.id, W, H));
+        svg.appendChild(path);
+        btn.appendChild(svg);
+
+        const label = document.createElement('span');
+        label.className = 'palette-item-label';
+        label.textContent = shape.label;
+        btn.appendChild(label);
+
+        // 続けて置けるよう、挿入してもパレットは開いたままにする
+        btn.addEventListener('click', () => insertShape(shape.id));
+        grid.appendChild(btn);
+      });
+      body.appendChild(grid);
     });
-  });
+  }
+
+  function setPaletteOpen(open) {
+    document.body.classList.toggle('palette-open', open);
+    shapePalette.hidden = !open;
+    shapePaletteBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+    try {
+      localStorage.setItem(PALETTE_KEY, open ? '1' : '0');
+    } catch (e) {
+      // localStorage が使えない環境では開閉状態を覚えないだけで、動作には影響しない
+    }
+  }
+
+  buildShapePalette();
+  shapePaletteBtn.addEventListener('click', () => setPaletteOpen(shapePalette.hidden));
+  document.getElementById('palette-close').addEventListener('click', () => setPaletteOpen(false));
+
+  // 初回は開いた状態にする（図形の入口がここしかないため）
+  let paletteInitial = '1';
+  try {
+    const stored = localStorage.getItem(PALETTE_KEY);
+    if (stored !== null) paletteInitial = stored;
+  } catch (e) {
+    // 読めない場合は既定（開く）のまま
+  }
+  setPaletteOpen(paletteInitial === '1');
 
   // ---- テキストノードの追加 ----
   // 背景・枠のない空のテキストノードは見えないため、追加直後にそのまま編集モードへ入る。

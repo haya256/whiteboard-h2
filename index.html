@@ -47,9 +47,7 @@
         <div class="ribbon-group-label">挿入</div>
         <div class="ribbon-group-items">
           <button id="btn-add-sticky">+ 付箋</button>
-          <button id="btn-add-rect">□ 矩形</button>
-          <button id="btn-add-ellipse">○ 楕円</button>
-          <button id="btn-add-diamond">◇ ひし形</button>
+          <button id="btn-shapes" aria-pressed="false" title="図形パレットを開く／閉じる">◇ 図形</button>
           <button id="btn-add-text">T テキスト</button>
           <label class="toolbar-btn" id="btn-image-label">
             🖼 画像
@@ -81,6 +79,16 @@
       </div>
     </div>
   </div>
+  <!-- 図形パレット（部品置き場）。「挿入」の「◇ 図形」で開閉する。
+       中身は src/shapes.js のカタログから src/app.js が生成する -->
+  <aside id="shape-palette" hidden aria-label="図形パレット">
+    <div class="palette-header">
+      <span>図形</span>
+      <button id="palette-close" type="button" title="パレットを閉じる" aria-label="パレットを閉じる">×</button>
+    </div>
+    <div id="palette-body"></div>
+  </aside>
+
   <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
 
   <!-- 右クリックメニュー（複製・グループ化・リンクの設定・重なり順の変更・削除） -->
@@ -185,6 +193,7 @@
     </div>
   </div>
 
+  <script src="src/shapes.js"></script>
   <script src="src/model.js"></script>
   <script src="src/view.js"></script>
   <script src="src/io.js"></script>

@@ -14,6 +14,13 @@ html, body {
    （JS 側は #toolbar の実際の高さを見るので、ここを変えるだけでよい）。 */
 :root {
   --toolbar-h: 52px;
+  /* 図形パレットの幅。閉じているときは 0 で、#canvas がその分だけ広がる
+     （座標変換は #canvas の実寸を見ているので、これだけでズレなく追随する） */
+  --palette-w: 0px;
+}
+
+body.palette-open {
+  --palette-w: 208px;
 }
 
 #toolbar {
@@ -180,6 +187,7 @@ html, body {
 #btn-import { display: none; }
 #btn-image { display: none; }
 
+#btn-shapes[aria-pressed="true"],
 #btn-connector.active {
   background: #4a90e2 !important;
   color: #fff !important;
@@ -259,6 +267,7 @@ html, body {
 }
 
 /* 選択中コネクタの青は状態表示なのでメニュー内でも残す */
+#toolbar .ribbon-menu #btn-shapes[aria-pressed="true"],
 #toolbar .ribbon-menu #btn-connector.active {
   background: #4a90e2 !important;
   color: #fff !important;
@@ -270,10 +279,119 @@ html, body {
 }
 
 /* ---- Canvas ---- */
+/* ---- 図形パレット（部品置き場） ---- */
+/* 「挿入」の「◇ 図形」で開閉する左のサイドパネル。中身は src/shapes.js のカタログから生成する。 */
+
+/* display: flex が UA の hidden（display:none）に勝ってしまうので、閉じているときを明示する */
+#shape-palette[hidden] {
+  display: none;
+}
+
+#shape-palette {
+  position: fixed;
+  top: var(--toolbar-h);
+  left: 0;
+  width: var(--palette-w);
+  height: calc(100% - var(--toolbar-h));
+  background: #ffffff;
+  border-right: 1px solid #e2e2ea;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  user-select: none;
+}
+
+.palette-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1px solid #ececf2;
+  font-size: 13px;
+  font-weight: 600;
+  color: #44454f;
+  flex: none;
+}
+
+#palette-close {
+  border: none;
+  background: transparent;
+  color: #8a8b96;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#palette-close:hover {
+  background: #f0f0f5;
+  color: #44454f;
+}
+
+#palette-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 16px;
+}
+
+.palette-category {
+  font-size: 11px;
+  color: #8a8b96;
+  padding: 10px 4px 4px;
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.palette-item {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 2px 3px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: #6b6c78;
+}
+
+.palette-item:hover {
+  background: #f2f6fd;
+  border-color: #c6dcf7;
+}
+
+.palette-item svg {
+  display: block;
+}
+
+/* サムネイルは実際の図形と同じ Shapes.pathD() で描く */
+.palette-item svg path {
+  fill: #ffffff;
+  fill-rule: evenodd;
+  stroke: #4a90e2;
+  stroke-width: 1.5;
+}
+
+.palette-item-label {
+  font-size: 9px;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #canvas {
   position: fixed;
-  top: var(--toolbar-h); left: 0;
-  width: 100%;
+  top: var(--toolbar-h); left: var(--palette-w);
+  width: calc(100% - var(--palette-w));
   height: calc(100% - var(--toolbar-h));
   background: #f5f5f8;
   cursor: default;
