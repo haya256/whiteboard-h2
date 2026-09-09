@@ -11,6 +11,44 @@
     return (toolbar ? toolbar.offsetHeight : 0) + 4;
   }
 
+  // ---- 選択の描画（グループ枠を含む） ----
+  // 選択状態を変えたあとは必ず renderSelection() を呼ぶ。Model の選択状態から View の表示を組み立て直す。
+  // グループ全体を選択しているときは、個々のノードの選択枠は出さず破線のグループ枠だけを出す。
+  // グループの中の1つを選んでいるとき（グループに入っている状態）は、そのノードの選択枠と
+  // リサイズハンドルを出したうえで、グループ枠も残して「まだグループの中にいる」ことを示す。
+
+  const GROUP_FRAME_PAD = 8; // グループ枠とメンバーの間の余白（ワールド座標）
+
+  // ids のノードをまとめて囲む矩形（+余白）。該当ノードが1つもなければ null
+  function nodesBBox(ids, pad) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    ids.forEach(id => {
+      const n = Model.findById(id);
+      if (!n) return;
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.width);
+      maxY = Math.max(maxY, n.y + n.height);
+    });
+    if (minX === Infinity) return null;
+    return { x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
+  }
+
+  // グループ枠だけを出し直す。ドラッグ・リサイズ中に枠を追従させる用（選択自体は変わらないため）
+  function updateGroupFrame() {
+    const gid = Model.getSelectedGroupId() || Model.getInsideGroupId();
+    const box = gid ? nodesBBox(Model.getGroupMemberIds(gid), GROUP_FRAME_PAD) : null;
+    if (box) View.showGroupFrame(box.x, box.y, box.w, box.h);
+    else View.hideGroupFrame();
+  }
+
+  function renderSelection() {
+    // グループ全体を選択中は個々の選択枠を出さない（破線のグループ枠だけで表す）
+    View.selectNodes(Model.getSelectedGroupId() ? [] : Model.getSelectedIds());
+    View.selectEdge(Model.getSelectedEdgeId());
+    updateGroupFrame();
+  }
+
   const saved = IO.load();
   if (saved?.nodes?.length) {
     Model.setNodes(saved.nodes);
@@ -78,8 +116,7 @@
       Model.setNodes(state.nodes);
       Model.setEdges(state.edges);
       View.renderAll(Model.getNodes());
-      View.selectNodes([]);
-      View.selectEdge(null);
+      renderSelection();
       IO.save();
       closeLinkPopover(); // Undo/Redoでノードの状態が変わるためポップオーバーは閉じる
       refreshTextStylePopover(); // 選択は解除済みのため通常は閉じるだけになる
@@ -200,8 +237,7 @@
     editBtn.addEventListener('click', ev => {
       ev.stopPropagation();
       Model.select(nodeId);
-      View.selectNodes([nodeId]);
-      View.selectEdge(null);
+      renderSelection();
       openLinkEditor(nodeId);
     });
 
@@ -276,8 +312,7 @@
       deleteBtn.addEventListener('click', ev => {
         ev.stopPropagation();
         Model.select(nodeId);
-        View.selectNodes([nodeId]);
-        View.selectEdge(null);
+        renderSelection();
         removeLinkFromSelected();
       });
       linkPopover.appendChild(deleteBtn);
@@ -884,8 +919,7 @@
     View.addNode(node);
     lastInsertedId = node.id;
     Model.select(node.id);
-    View.selectNode(node.id);
-    View.selectEdge(null);
+    renderSelection();
     commit();
     refreshTextStylePopover();
   });
@@ -897,8 +931,7 @@
       View.addNode(node);
       lastInsertedId = node.id;
       Model.select(node.id);
-      View.selectNode(node.id);
-      View.selectEdge(null);
+      renderSelection();
       commit();
       refreshTextStylePopover();
     });
@@ -914,8 +947,7 @@
     View.addNode(node);
     lastInsertedId = node.id;
     Model.select(node.id);
-    View.selectNode(node.id);
-    View.selectEdge(null);
+    renderSelection();
     editing = true;
     View.startEditing(node.id, (content, scrollHeight) => finishNodeEdit(node.id, content, scrollHeight));
   });
@@ -930,8 +962,7 @@
     View.addNode(node);
     lastInsertedId = node.id;
     Model.select(node.id);
-    View.selectNode(node.id);
-    View.selectEdge(null);
+    renderSelection();
     commit();
     refreshTextStylePopover(); // 画像は対象外だが、前の選択で開いていた場合は閉じる
   }
@@ -1025,8 +1056,7 @@
     Model.setNodes(data.nodes || []);
     Model.setEdges(data.edges || []);
     View.renderAll(Model.getNodes());
-    View.selectNode(null);
-    View.selectEdge(null);
+    renderSelection();
     View.setViewport(data.viewport || { x: 0, y: 0, zoom: 1 });
     updateZoomLabel();
     // ボード名はファイル名を優先し、なければメタデータのタイトルを使う
@@ -1047,8 +1077,7 @@
     Model.setEdges([]);
     Model.setTitle(''); // 空文字を渡すと既定のボード名（無題のボード）に戻る
     View.renderAll([]);
-    View.selectNodes([]);
-    View.selectEdge(null);
+    renderSelection();
     View.setViewport({ x: 0, y: 0, zoom: 1 });
     updateZoomLabel();
     renderBoardName();
@@ -1277,6 +1306,7 @@
       Model.updateSize(resize.id, w, h);
       View.moveNode(resize.id, x, y);
       View.resizeNode(resize.id, w, h);
+      updateGroupFrame(); // グループ内のノードをリサイズしている場合は枠を追従させる
       return;
     }
 
@@ -1298,14 +1328,23 @@
         Model.updatePosition(id, x, y);
         View.moveNode(id, x, y);
       });
+      updateGroupFrame(); // グループ枠を移動に追従させる
     }
   }
 
   function onMouseUp() {
+    // グループ全体を選択している状態でメンバーをクリックした（ドラッグはしなかった）ときは、
+    // そのメンバー単体の選択へ降りる。mousedown ではなくここで判定するのは、押した時点で選択を
+    // 狭めてしまうとグループ全体のドラッグができなくなるため
+    if (drag && !drag.moved && !drag.additive && drag.wasWholeGroup) {
+      Model.select(drag.hitId);
+      renderSelection();
+    }
     // ドラッグせずクリックだけで終わった単一ノード（Shift/Ctrl修飾なし）なら、
-    // リンクポップオーバーの表示対象候補として覚えておく（実際に出すのは commit 後）
-    const clickedNodeId = (drag && !drag.moved && !drag.additive && drag.ids.length === 1)
-      ? drag.ids[0] : null;
+    // リンクポップオーバーの表示対象候補として覚えておく（実際に出すのは commit 後）。
+    // 上でグループ内の単体選択へ降りた場合もここに含まれる
+    const clickedNodeId = (drag && !drag.moved && !drag.additive && Model.getSelectedId() === drag.hitId)
+      ? drag.hitId : null;
     if (drag || resize) { commit(); drag = null; resize = null; }
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
@@ -1334,13 +1373,13 @@
     const hit = Model.getNodes()
       .filter(n => rectsIntersect(x, y, w, h, n.x, n.y, n.width, n.height))
       .map(n => n.id);
-    // Shift/Ctrl+ドラッグ：既存の選択を残したまま、囲んだノードを追加する
-    const ids = rubberBand.additive
+    // Shift/Ctrl+ドラッグ：既存の選択を残したまま、囲んだノードを追加する。
+    // メンバーが1つでも矩形にかかったグループは、まとめてグループ全体を選択する
+    const ids = Model.expandToGroups(rubberBand.additive
       ? Array.from(new Set([...rubberBand.baseIds, ...hit]))
-      : hit;
+      : hit);
     Model.selectMany(ids);
-    View.selectNodes(ids);
-    View.selectEdge(null);
+    renderSelection();
 
     View.hideRubberBand(rubberBand.el);
     rubberBand = null;
@@ -1429,8 +1468,7 @@
       e.preventDefault();
       const id = edgeEl.dataset.id;
       Model.selectEdge(id);
-      View.selectNode(null);
-      View.selectEdge(id);
+      renderSelection();
       // ここ（mousedown）で開くと、直後に document 側の「外側クリックで閉じる」mousedown 処理に閉じられて
       // しまうため、ノードと同様に mouseup のタイミングでコネクタ用ポップオーバーを開く
       closeTextStylePopover();
@@ -1449,18 +1487,33 @@
     e.preventDefault();
     const id = nodeEl.dataset.id;
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    const gid = Model.getGroupId(id);
+    // このクリックの直前に、このノードのグループ全体を選択していたか。
+    // このときだけ、ドラッグせずに離すとグループの中の1つへ降りる（判定は onMouseUp）
+    const wasWholeGroup = !!gid && Model.getSelectedGroupId() === gid;
 
     if (additive) {
-      // Shift/Ctrl+クリック：選択への追加・解除トグル
-      Model.toggleSelect(id);
-    } else if (!Model.isSelected(id)) {
-      // 通常クリック：そのノードのみ選択
+      // Shift/Ctrl+クリック：選択への追加・解除トグル。グループはメンバーごとまとめてトグルする
+      if (gid) {
+        const members = Model.getGroupMemberIds(gid);
+        const current = Model.getSelectedIds();
+        Model.selectMany(Model.isSelected(id)
+          ? current.filter(sid => !members.includes(sid))
+          : current.concat(members));
+      } else {
+        Model.toggleSelect(id);
+      }
+    } else if (gid && Model.getInsideGroupId() === gid) {
+      // グループの中にいる状態で（同じグループの）ノードをクリック：そのノード単体の選択へ移る
       Model.select(id);
+    } else if (!Model.isSelected(id)) {
+      // 通常クリック：グループに属していればグループ全体、属していなければそのノードのみ選択
+      if (gid) Model.selectMany(Model.getGroupMemberIds(gid));
+      else Model.select(id);
     }
     // else: 既に選択済みのノードを通常クリック → グループドラッグのため選択を維持する
 
-    View.selectNodes(Model.getSelectedIds());
-    View.selectEdge(null);
+    renderSelection();
 
     // Shift+クリックで選択解除された（今クリックしたノードが未選択になった）場合はドラッグを開始しない
     if (!Model.isSelected(id)) return;
@@ -1475,9 +1528,11 @@
     closeTextStylePopover(); // ドラッグ開始（クリックのみだった場合は onMouseUp で出し直す）
     // moved: マウスアップ時に「クリック」だったか（ドラッグしなかったか）を判定するためのフラグ
     // additive: Shift/Ctrl+クリックだったか（選択操作なのでリンクのポップオーバー表示対象から除外する）
+    // hitId: 実際にクリックしたノード（グループ全体を選択中はドラッグ対象と一致しない）
+    // wasWholeGroup: クリック前にそのグループ全体を選択していたか（単体選択へ降りるかの判定に使う）
     drag = {
       ids, startX: pt.x, startY: pt.y, origins,
-      moved: false, additive,
+      moved: false, additive, hitId: id, wasWholeGroup,
       startClientX: e.clientX, startClientY: e.clientY
     };
 
@@ -1497,8 +1552,7 @@
       if (removed) {
         removed.nodeIds.forEach(nid => View.removeNode(nid));
         removed.edgeIds.forEach(eid => View.removeEdge(eid));
-        View.selectNodes([]);
-        View.selectEdge(null);
+        renderSelection();
       }
     } else {
       Model.updateContent(id, content);
@@ -1574,8 +1628,7 @@
       if (connectMode) { setConnectMode(false); return; }
       if (!editing) {
         Model.clearSelection();
-        View.selectNodes([]);
-        View.selectEdge(null);
+        renderSelection();
         refreshTextStylePopover();
       }
       return;
@@ -1591,8 +1644,7 @@
       e.preventDefault();
       const ids = Model.getNodes().map(n => n.id);
       Model.selectMany(ids);
-      View.selectNodes(ids);
-      View.selectEdge(null);
+      renderSelection();
       refreshTextStylePopover();
       return;
     }
@@ -1612,8 +1664,7 @@
 
     removed.nodeIds.forEach(id => View.removeNode(id));
     removed.edgeIds.forEach(id => View.removeEdge(id));
-    View.selectNodes([]);
-    View.selectEdge(null);
+    renderSelection();
     closeLinkPopover(); // 表示中のノードが削除された可能性があるため閉じる
     refreshTextStylePopover();
     commit();
@@ -1634,8 +1685,7 @@
     edges.forEach(e => View.addEdge(e));
     // 複製直後は複製側を選択する（そのまま続けて複製すると階段状に増える）
     Model.selectMany(nodes.map(n => n.id));
-    View.selectNodes(Model.getSelectedIds());
-    View.selectEdge(null);
+    renderSelection();
     closeLinkPopover(); // 元ノードに対して開いていた場合は閉じる
     refreshTextStylePopover();
     commit();
@@ -1652,6 +1702,36 @@
     duplicateSelected();
   });
 
+  // ---- グループ化 / グループ解除（Ctrl+G・Ctrl+Shift+G / 右クリックメニュー共通処理） ----
+  // グループの情報はノードの groupId フィールドとして持つため、履歴・保存は commit() だけで足りる。
+
+  function groupSelection() {
+    if (!Model.groupSelected()) return; // 2件未満の選択では何もしない
+    closeLinkPopover();
+    closeTextStylePopover(); // 単一選択ではなくなるため閉じる
+    renderSelection();
+    commit();
+  }
+
+  function ungroupSelection() {
+    if (!Model.ungroupSelected()) return; // グループ所属のノードが選択にない
+    renderSelection();
+    refreshTextStylePopover();
+    commit();
+  }
+
+  // Ctrl/Cmd+G：グループ化、Ctrl/Cmd+Shift+G：グループ解除
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'g') return;
+    if (editing || connectMode) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (!Model.getSelectedIds().length) return;
+    e.preventDefault();
+    if (e.shiftKey) ungroupSelection();
+    else groupSelection();
+  });
+
   // ---- 重なり順（Z順）の変更 ----
   // Model.bringToFront/sendToBack/bringForward/sendBackward はいずれも
   // 配列順（= 重なり順）を書き換えて変化の有無（true/false）を返す。
@@ -1663,6 +1743,7 @@
     const changed = Model[action](ids);
     if (changed) {
       View.reorderNodes(Model.getNodes());
+      updateGroupFrame(); // 並べ替えでノードが前面に移るため、グループ枠を出し直して最前面に戻す
       commit();
     }
   }
@@ -1700,6 +1781,16 @@
 
   // リンク関連の項目（設定…/編集…/削除）を選択状態に合わせて出し分ける。
   // 単一選択時のみ表示：リンク未設定なら「設定…」の1つ、設定済みなら「編集…」「削除」の2つ
+  // グループ関連の項目を選択状態に合わせて出し分ける。
+  // 「グループ化」は2件以上選択しているとき、「グループ解除」は選択にグループ所属ノードがあるときだけ出す
+  const groupBtn = contextMenu.querySelector('[data-action="group"]');
+  const ungroupBtn = contextMenu.querySelector('[data-action="ungroup"]');
+
+  function updateContextMenuGroupItems() {
+    groupBtn.style.display = Model.getSelectedIds().length >= 2 ? '' : 'none';
+    ungroupBtn.style.display = Model.hasGroupedSelection() ? '' : 'none';
+  }
+
   const linkSetBtn = contextMenu.querySelector('[data-action="link-set"]');
   const linkEditBtn = contextMenu.querySelector('[data-action="link-edit"]');
   const linkRemoveBtn = contextMenu.querySelector('[data-action="link-remove"]');
@@ -1737,11 +1828,14 @@
     // 右クリックしたノードが未選択なら、そのノードのみ選択してからメニューを出す。
     // 既に選択中（複数選択の一部含む）ならそのまま選択状態を維持する。
     if (!Model.isSelected(id)) {
-      Model.select(id);
-      View.selectNodes(Model.getSelectedIds());
-      View.selectEdge(null);
+      const gid = Model.getGroupId(id);
+      // グループに属するノードなら、右クリックでもグループ全体を選択する
+      if (gid) Model.selectMany(Model.getGroupMemberIds(gid));
+      else Model.select(id);
+      renderSelection();
     }
     refreshTextStylePopover();
+    updateContextMenuGroupItems();
     updateContextMenuLinkItems();
     showContextMenu(e.clientX, e.clientY);
   });
@@ -1753,6 +1847,8 @@
     hideContextMenu();
 
     if (action === 'duplicate') { duplicateSelected(); return; }
+    if (action === 'group') { groupSelection(); return; }
+    if (action === 'ungroup') { ungroupSelection(); return; }
     if (action === 'delete') { deleteSelected(); return; }
     if (action === 'link-set' || action === 'link-edit') { openLinkEditorForSelection(); return; }
     if (action === 'link-remove') { removeLinkFromSelected(); return; }

@@ -54,6 +54,40 @@ const Model = (() => {
     return changed;
   }
 
+  // ---- グループ ----
+  // グループ用の配列は持たず、ノードの groupId フィールドだけで表す（link と同じく、
+  // どこにも属さないノードは groupId フィールド自体を持たない）。こうしておくと保存（io.js の
+  // buildData）・未保存判定・Undo（history.js の cloneNode）はノードを丸ごと扱っているため、
+  // それぞれに追加の対応をしなくてもグループが載る。
+  // 入れ子は作らない（1つのノードは高々1つのグループにしか属さない）。
+
+  // gid のメンバーID配列を返す（_nodes の順＝重なり順を保つ）
+  function memberIds(gid) {
+    return gid ? _nodes.filter(n => n.groupId === gid).map(n => n.id) : [];
+  }
+
+  // メンバーが1件以下になったグループを解体する。
+  // ノード削除・グループ解除・グループの統合など、メンバーが減りうる操作の後始末として呼ぶ。
+  function sanitizeGroups() {
+    const count = new Map();
+    _nodes.forEach(n => { if (n.groupId) count.set(n.groupId, (count.get(n.groupId) || 0) + 1); });
+    _nodes.forEach(n => { if (n.groupId && count.get(n.groupId) < 2) delete n.groupId; });
+  }
+
+  // 選択中のノードが全員そろって同じグループに属していればその gid、そうでなければ null。
+  // 「グループ全体を選択中」と「グループの中の一部を選択中」の判定に使う
+  function selectionGroupId() {
+    if (_selectedIds.size === 0) return null;
+    let gid = null;
+    for (const id of _selectedIds) {
+      const n = _nodes.find(nn => nn.id === id);
+      if (!n || !n.groupId) return null;
+      if (gid === null) gid = n.groupId;
+      else if (gid !== n.groupId) return null;
+    }
+    return gid;
+  }
+
   return {
     getNodes: () => _nodes,
     // 付箋の背景色の選択肢一覧（複製を返す）
@@ -78,6 +112,8 @@ const Model = (() => {
 
     setNodes(nodes) {
       _nodes = nodes;
+      // 読み込んだデータにメンバーが1件しかないグループが残っていても正常な状態に直す
+      sanitizeGroups();
       _selectedIds = new Set();
       _selectedEdgeId = null;
     },
@@ -274,6 +310,7 @@ const Model = (() => {
         return true;
       });
       _selectedIds.delete(id);
+      sanitizeGroups(); // 削除でメンバーが1件になったグループは解体する
       return { type: 'node', nodeIds: [id], edgeIds };
     },
 
@@ -289,9 +326,15 @@ const Model = (() => {
       // style はネストしたオブジェクトなので個別にコピーする（History.cloneNode と同じ方針。
       // 画像の src のような長い文字列は不変なので参照を共有したままでよい）
       const idMap = new Map(); // 元ID → 複製後のID
+      const groupMap = new Map(); // 元のグループID → 複製後のグループID
       const nodes = _nodes.filter(n => idSet.has(n.id)).map(n => {
         const copy = Object.assign({}, n, { id: crypto.randomUUID(), x: n.x + dx, y: n.y + dy });
         if (n.style) copy.style = Object.assign({}, n.style);
+        // グループも一緒に複製する。複製側には新しいグループIDを振り、元のグループへ合流させない
+        if (n.groupId) {
+          if (!groupMap.has(n.groupId)) groupMap.set(n.groupId, crypto.randomUUID());
+          copy.groupId = groupMap.get(n.groupId);
+        }
         idMap.set(n.id, copy.id);
         return copy;
       });
@@ -308,7 +351,76 @@ const Model = (() => {
 
       _nodes.push(...nodes);
       _edges.push(...edges);
+      // グループの一部だけを複製した場合、複製側が1件だけのグループにならないようにする
+      sanitizeGroups();
       return { nodes, edges };
+    },
+
+    // ---- グループ ----
+
+    // ノードが属するグループのID。どこにも属していなければ null
+    getGroupId(id) {
+      const n = _nodes.find(n => n.id === id);
+      return (n && n.groupId) ? n.groupId : null;
+    },
+
+    // グループのメンバーID配列（重なり順）
+    getGroupMemberIds: gid => memberIds(gid),
+
+    // ids を「所属グループごと」に広げたID配列を返す（重複なし）。
+    // グループのメンバーが1つでも含まれていれば、そのグループ全体が選ばれるようにする用途
+    expandToGroups(ids) {
+      const out = new Set();
+      (ids || []).forEach(id => {
+        const n = _nodes.find(nn => nn.id === id);
+        if (!n) return;
+        if (n.groupId) memberIds(n.groupId).forEach(mid => out.add(mid));
+        else out.add(id);
+      });
+      return Array.from(out);
+    },
+
+    // 現在の選択があるグループの「全メンバーとちょうど一致」するときだけその gid を返す
+    // （＝グループ全体を選択中）。それ以外は null
+    getSelectedGroupId() {
+      const gid = selectionGroupId();
+      if (!gid) return null;
+      return memberIds(gid).length === _selectedIds.size ? gid : null;
+    },
+
+    // 現在の選択があるグループの「一部だけ」のときその gid を返す（＝グループの中に入っている状態）。
+    // それ以外は null
+    getInsideGroupId() {
+      const gid = selectionGroupId();
+      if (!gid) return null;
+      return memberIds(gid).length > _selectedIds.size ? gid : null;
+    },
+
+    // 選択中にグループ所属のノードが含まれるか（「グループ解除」を出すかの判定に使う）
+    hasGroupedSelection() {
+      return _nodes.some(n => _selectedIds.has(n.id) && !!n.groupId);
+    },
+
+    // 選択中のノード（2件以上）を1つのグループにまとめ、そのグループIDを返す。2件未満なら null。
+    // 既にグループに属しているノードを含む場合、元のグループは解体して1つの新グループへ統合する
+    // （入れ子は作らないため）。統合で1件だけ取り残された元グループも解体される
+    groupSelected() {
+      if (_selectedIds.size < 2) return null;
+      const gid = crypto.randomUUID();
+      _nodes.forEach(n => { if (_selectedIds.has(n.id)) n.groupId = gid; });
+      sanitizeGroups();
+      return gid;
+    },
+
+    // 選択中のノードが属するグループを解体する。メンバーの一部しか選択していなくても
+    // そのグループ全体を解体する（「グループ解除」は選択からの離脱ではなくグループの解散）。
+    // 変化があれば true
+    ungroupSelected() {
+      const gids = new Set();
+      _nodes.forEach(n => { if (_selectedIds.has(n.id) && n.groupId) gids.add(n.groupId); });
+      if (gids.size === 0) return false;
+      _nodes.forEach(n => { if (n.groupId && gids.has(n.groupId)) delete n.groupId; });
+      return true;
     },
 
     // ---- 重なり順（Z順）の変更 ----
@@ -427,6 +539,7 @@ const Model = (() => {
           return true;
         });
         _selectedIds = new Set();
+        sanitizeGroups(); // 削除でメンバーが1件になったグループは解体する
         return { type: 'node', nodeIds, edgeIds };
       }
       return null;

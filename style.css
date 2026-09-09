@@ -500,6 +500,17 @@ html, body {
   pointer-events: none;
 }
 
+/* グループ選択中に出す破線枠。選択を示すだけの表示なのでクリック対象にはしない
+   （グループはメンバーのノードをクリックして選ぶ） */
+.group-frame {
+  fill: none;
+  stroke: #4a90e2;
+  stroke-width: 1.5;
+  stroke-dasharray: 8 5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
 /* ---- コネクタ（エッジ） ---- */
 #edges-layer {
   cursor: default;

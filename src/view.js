@@ -5,6 +5,7 @@ const View = (() => {
   const XHTML_NS = 'http://www.w3.org/1999/xhtml';
   let _canvas;
   let _viewport; // <g id="viewport"> パン・ズーム対象レイヤー（ノード・コネクタをまとめる）
+  let _groupFrame = null; // グループ選択中に出す破線枠（1つだけ作って使い回す）
   let _vp = { x: 0, y: 0, zoom: 1 }; // 現在のビューポート状態
 
   // ビューポートのtransform属性を現在の状態から再設定する
@@ -729,6 +730,29 @@ const View = (() => {
 
     hideRubberBand(el) {
       el?.remove();
+    },
+
+    // ---- グループ枠（グループ選択中に出す破線の枠） ----
+    // ラバーバンドと違い、同時に1つしか出ないので要素を使い回す。
+    // _viewport の子なのでパン・ズームには自動で追従する。
+
+    showGroupFrame(x, y, w, h) {
+      if (!_groupFrame) {
+        _groupFrame = document.createElementNS(SVG_NS, 'rect');
+        _groupFrame.classList.add('group-frame');
+        _viewport.appendChild(_groupFrame);
+      }
+      // ノードより手前に出す（後から追加されたノードに隠れないよう毎回末尾へ移す）
+      if (_groupFrame.parentNode !== _viewport || _groupFrame.nextSibling) _viewport.appendChild(_groupFrame);
+      _groupFrame.setAttribute('x', x);
+      _groupFrame.setAttribute('y', y);
+      _groupFrame.setAttribute('width', w);
+      _groupFrame.setAttribute('height', h);
+      _groupFrame.style.display = '';
+    },
+
+    hideGroupFrame() {
+      if (_groupFrame) _groupFrame.style.display = 'none';
     },
 
     // ---- コネクタ（エッジ） 公開API ----
