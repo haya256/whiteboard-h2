@@ -522,38 +522,102 @@ const View = (() => {
     div.addEventListener('keydown', onKey);
   }
 
+  // ---- キャンバスの背景 ----
+  // 背景は下地（_bgBase）と模様（_bgPattern）の2枚構成にしてある。
+  // 「単色＋ドット」と「グラデーション＋星」を同じ枠で扱うための作り。
+  // どちらもビューポート層の外に置くので、パン・ズームしても動かない。
+
+  let _bgDefs = null;    // 背景専用の <defs>。切り替えるたびに中身を作り直す
+  let _bgBase = null;    // 下地の矩形
+  let _bgPattern = null; // 模様の矩形
+
+  // 属性をまとめて指定して SVG 要素を作る。背景は小さな要素を多数作るのでここだけで使う
+  function svgEl(name, attrs) {
+    const node = document.createElementNS(SVG_NS, name);
+    Object.keys(attrs).forEach(k => node.setAttribute(k, attrs[k]));
+    return node;
+  }
+
+  // シードを固定した疑似乱数（線形合同法）。星の座標を直書きせずに済ませつつ、
+  // 開き直しても同じ配置になるようにするために使う
+  function makeRandom(seed) {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      return s / 0x7fffffff;
+    };
+  }
+
+  // 格子状のドット（従来からの既定の背景）
+  function buildDotsBg() {
+    const pat = svgEl('pattern', { id: 'bg-dots', x: 0, y: 0, width: 28, height: 28, patternUnits: 'userSpaceOnUse' });
+    pat.appendChild(svgEl('circle', { cx: 1, cy: 1, r: 1, fill: '#c4c4cc' }));
+    return { defs: [pat], base: '#f5f5f8', pattern: 'url(#bg-dots)' };
+  }
+
+  // 宇宙空間。中央がわずかに明るい暗い下地に、大きさと明るさをばらけさせた星を散らす。
+  // 同じ並びの繰り返しが目に付かないよう、模様は大きめ（800px角）にして星は小さく保つ
+  function buildSpaceBg() {
+    const grad = svgEl('radialGradient', { id: 'bg-space-base', cx: '50%', cy: '45%', r: '75%' });
+    grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': '#232748' }));
+    grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': '#0a0a14' }));
+
+    const SIZE = 800;
+    const pat = svgEl('pattern', { id: 'bg-space-stars', x: 0, y: 0, width: SIZE, height: SIZE, patternUnits: 'userSpaceOnUse' });
+    const rand = makeRandom(20260910); // 値そのものに意味はない。配置を固定するための種
+    for (let i = 0; i < 280; i++) {
+      // 10個に1個だけ淡く色づいた大きめの星にして単調さを消す
+      const tinted = i % 10 === 0;
+      pat.appendChild(svgEl('circle', {
+        cx: (rand() * SIZE).toFixed(1),
+        cy: (rand() * SIZE).toFixed(1),
+        r: (tinted ? 1.2 + rand() * 0.6 : 0.5 + rand() * 0.9).toFixed(2),
+        fill: tinted ? (i % 20 === 0 ? '#ffe9c4' : '#cfe3ff') : '#ffffff',
+        opacity: (0.35 + rand() * 0.65).toFixed(2)
+      }));
+    }
+    return { defs: [grad, pat], base: 'url(#bg-space-base)', pattern: 'url(#bg-space-stars)' };
+  }
+
+  // 背景の定義。設定ダイアログの選択肢もここから作る。増やすときはここに1行足す
+  const BACKGROUNDS = {
+    dots: { label: 'ドット', build: buildDotsBg },
+    space: { label: '宇宙', build: buildSpaceBg }
+  };
+
+  // 未知の名前（古い設定が残っている等）が来たら既定のドットに戻す
+  function setBackground(name) {
+    const bg = (BACKGROUNDS[name] || BACKGROUNDS.dots).build();
+    _bgDefs.replaceChildren(...bg.defs);
+    _bgBase.setAttribute('fill', bg.base);
+    _bgPattern.setAttribute('fill', bg.pattern);
+  }
+
   // ---- 公開API ----
 
   return {
     init(canvasEl) {
       _canvas = canvasEl;
 
-      const defs = document.createElementNS(SVG_NS, 'defs');
-      const pat = document.createElementNS(SVG_NS, 'pattern');
-      pat.id = 'dot-grid';
-      pat.setAttribute('x', '0');
-      pat.setAttribute('y', '0');
-      pat.setAttribute('width', '28');
-      pat.setAttribute('height', '28');
-      pat.setAttribute('patternUnits', 'userSpaceOnUse');
-      const dot = document.createElementNS(SVG_NS, 'circle');
-      dot.setAttribute('cx', '1');
-      dot.setAttribute('cy', '1');
-      dot.setAttribute('r', '1');
-      dot.setAttribute('fill', '#c4c4cc');
-      pat.appendChild(dot);
-      defs.appendChild(pat);
-      _canvas.appendChild(defs);
+      _bgDefs = document.createElementNS(SVG_NS, 'defs');
+      _canvas.appendChild(_bgDefs);
 
-      const bg = document.createElementNS(SVG_NS, 'rect');
-      bg.setAttribute('width', '100%');
-      bg.setAttribute('height', '100%');
-      bg.setAttribute('fill', 'url(#dot-grid)');
-      bg.style.pointerEvents = 'none';
-      _canvas.appendChild(bg);
+      _bgBase = svgEl('rect', { width: '100%', height: '100%' });
+      _bgBase.style.pointerEvents = 'none';
+      _canvas.appendChild(_bgBase);
+
+      _bgPattern = svgEl('rect', { width: '100%', height: '100%' });
+      _bgPattern.style.pointerEvents = 'none';
+      _canvas.appendChild(_bgPattern);
+
+      // 設定ダイアログの選択肢を作り、現在値で初期描画する。
+      // subscribe は登録時にも呼ばれるので、初期描画と設定変更が同じ経路になる
+      Settings.buildRadioRow('setting-background', 'background',
+        Object.keys(BACKGROUNDS).map(value => ({ value, label: BACKGROUNDS[value].label })));
+      Settings.subscribe('background', setBackground);
 
       // ビューポート層：パン・ズームの対象となる描画要素（コネクタ・ノード）をまとめて入れる。
-      // 背景の点グリッドと空状態ヒントはこの外＝画面固定のまま表示する。
+      // 背景と空状態ヒントはこの外＝画面固定のまま表示する。
       _viewport = document.createElementNS(SVG_NS, 'g');
       _viewport.id = 'viewport';
       _canvas.appendChild(_viewport);

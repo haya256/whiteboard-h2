@@ -9,9 +9,9 @@ const Ribbon = (() => {
   if (!toolbar || !groupsEl) return {};
 
   // 横幅が足りないときに畳んでいく順。先にあるグループから畳む。
-  // 編集は Ctrl+Z / Ctrl+Y で代用でき、挿入はこのアプリの主作業なので最後まで残す。
-  // ヘルプは項目が1つしかなく、「⋯」に置き換えても幅が減らないため対象外。
-  const COLLAPSE_ORDER = ['edit', 'view', 'file', 'insert'];
+  // その他（設定・ヘルプ）は使う頻度が低いので最初に畳み、編集は Ctrl+Z / Ctrl+Y で代用でき、
+  // 挿入はこのアプリの主作業なので最後まで残す。
+  const COLLAPSE_ORDER = ['misc', 'edit', 'view', 'file', 'insert'];
 
   // グループごとの情報。items = 通常時に並ぶ要素（ボタン・ラベル）を元の順で保持したもの
   const groups = new Map();

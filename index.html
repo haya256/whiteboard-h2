@@ -74,10 +74,12 @@
         <div class="ribbon-menu" hidden></div>
       </div>
 
-      <div class="ribbon-group" data-group="help">
-        <div class="ribbon-group-label">ヘルプ</div>
+      <div class="ribbon-group" data-group="misc">
+        <div class="ribbon-group-label">その他</div>
         <div class="ribbon-group-items">
+          <button id="btn-settings" title="背景などの設定">⚙ 設定</button>
           <button id="btn-help" title="使い方とデータの保存について">？ ヘルプ</button>
+          <button class="ribbon-more" type="button" hidden aria-label="その他の操作" aria-expanded="false">⋯</button>
         </div>
         <div class="ribbon-menu" hidden></div>
       </div>
@@ -138,6 +140,21 @@
     </div>
   </div>
 
+  <!-- 設定ダイアログ（「その他」の「⚙ 設定」で開く）。
+       項目を増やすときは .settings-row を1つ足す。選択肢の中身は src/settings.js が組み立てる -->
+  <div id="settings-overlay" hidden>
+    <div id="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <h2 id="settings-title">設定</h2>
+      <div class="settings-row">
+        <div class="settings-label">キャンバスの背景</div>
+        <div class="settings-control" id="setting-background"></div>
+      </div>
+      <div class="settings-footer">
+        <button id="settings-close">閉じる</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 初回起動時のウェルカム画面（「？ ヘルプ」ボタンからも開ける） -->
   <div id="welcome-overlay" hidden>
     <div id="welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
@@ -168,7 +185,9 @@
         <li>リンク：右クリックメニューから設定すると、ノード右上に 🔗 が付きます。🔗 をクリックすると別タブで開きます（マウスを乗せると URL を確認できます）。</li>
         <li>右クリックメニュー：複製やリンクの設定、重なり順の変更・削除ができます。</li>
         <li>保存：<kbd>Ctrl</kbd>+<kbd>S</kbd> で開いているファイルに上書き保存、<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> で名前を付けて保存。</li>
+        <li>設定：「その他」の「⚙ 設定」からキャンバスの背景（ドット／宇宙）を変えられます。設定はこの端末のブラウザに保存され、どのボードを開いても同じ背景になります。</li>
       </ul>
+      <p class="welcome-note">「宇宙」の背景では、テキストとコネクタの既定の色（濃いグレー）が見えにくくなります。それぞれを選択すると出るスタイル編集から明るい色に変えてください。書き出す .svg の背景は設定にかかわらず薄いグレーのままです。</p>
 
       <details class="welcome-section">
         <summary>データはどこに保存される？</summary>
@@ -201,6 +220,8 @@
   </div>
 
   <script src="src/shapes.js"></script>
+  <!-- view.js が背景の初期値を読むため、settings.js は先に読み込む -->
+  <script src="src/settings.js"></script>
   <script src="src/model.js"></script>
   <script src="src/view.js"></script>
   <script src="src/io.js"></script>
