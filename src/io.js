@@ -1,5 +1,9 @@
 'use strict';
 
+// このモジュールには紛らわしい「保存」が3つある。役割は次のとおり。
+//   save()       … localStorage への自動保存。操作のたびに呼ばれ、常に最新。ファイルには触らない
+//   saveFile()   … 「保存」。開いているファイルへ確認なしで上書きする。結びついたファイルが無ければ saveFileAs() に委譲
+//   saveFileAs() … 「名前を付けて保存」。保存ダイアログで保存先とファイル名を決めてから書き出す
 const IO = (() => {
   const STORAGE_KEY = 'openboard_v01';
   // 最後に .svg へ書き出した（または .svg から開いた）時点の内容の指紋。
@@ -17,6 +21,11 @@ const IO = (() => {
     return typeof window.showOpenFilePicker === 'function' && typeof window.showSaveFilePicker === 'function';
   }
   function stripSvgExt(name) { return String(name || '').replace(/\.svg$/i, '').trim(); }
+
+  // 「開く」または「名前を付けて保存」で結びついたファイル。「保存」の上書き先になる。
+  // ページを離れるまでの寿命で、IndexedDB などへ永続化はしない
+  // （リロード後は null に戻り、「保存」は「名前を付けて保存」と同じ動作になる）。
+  let _fileHandle = null;
 
   // 保存 SVG をブラウザで開いたときに画面と同じ見た目になるよう、style.css の該当規則（見た目に関わるものだけ）を転記している。
   // style.css を変更したらここも揃えること。
@@ -288,14 +297,38 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     URL.revokeObjectURL(url);
   }
 
-  // 保存ダイアログ（File System Access API）で保存する。対応ブラウザでは「開く」と同じ id を使うため
-  // 最後に保存/読み込みしたフォルダをブラウザが覚えていて、次回もそのフォルダが開く。
+  // ハンドルへ実際に書き込む。失敗したら通知して false を返す
+  async function writeHandle(handle, text) {
+    try {
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      return true;
+    } catch (err) {
+      showToast('保存に失敗しました: ' + err.message);
+      return false;
+    }
+  }
+
+  // 書き込み許可があるか確かめ、無ければユーザーに求める。
+  // 「開く」で得たハンドルは読み取り許可しか持たないため、初回の上書き時にブラウザの確認が1回出る。
+  async function ensureWritePermission(handle) {
+    if (typeof handle.queryPermission !== 'function' || typeof handle.requestPermission !== 'function') return true;
+    const opts = { mode: 'readwrite' };
+    if (await handle.queryPermission(opts) === 'granted') return true;
+    return await handle.requestPermission(opts) === 'granted';
+  }
+
+  // 「名前を付けて保存」。保存ダイアログ（File System Access API）で保存先とファイル名を決める。
+  // 対応ブラウザでは「開く」と同じ id を使うため、最後に保存/読み込みしたフォルダをブラウザが覚えていて、
+  // 次回もそのフォルダが開く。
   // onSaved はダイアログ経由の保存が成功したときのみ呼ばれる（フォールバック時は呼ばない）。
   // 戻り値は保存できたかどうか（true = 保存した / false = キャンセル・失敗）。
   // 「保存して新規作成」のように、保存の成否を見てから次の処理へ進みたい呼び出し側が使う。
-  async function exportSVG(onSaved) {
+  async function saveFileAs(onSaved) {
     if (!hasFileSystemAccess()) {
-      // <a download> はブラウザに渡した時点で成否を確認できないため、保存されたものとして扱う
+      // <a download> はブラウザに渡した時点で成否を確認できないため、保存されたものとして扱う。
+      // ダウンロードでは書き込み先を掴めないので、以降の「保存」もここへ来る
       downloadSVG(buildSVGString());
       markSaved();
       return true;
@@ -320,24 +353,49 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     // （SVG 内のメタデータにも新しいタイトルが入るようにする。次回の保存名・タブ名にも使う）
     const name = stripSvgExt(handle.name);
     if (name) Model.setTitle(name);
-    const text = buildSVGString();
 
-    try {
-      const writable = await handle.createWritable();
-      await writable.write(text);
-      await writable.close();
-    } catch (err) {
-      showToast('保存に失敗しました: ' + err.message);
-      return false;
-    }
+    if (!await writeHandle(handle, buildSVGString())) return false;
 
+    _fileHandle = handle; // 以降の「保存」はこのファイルを上書きする
     save();
     markSaved();
     if (typeof onSaved === 'function') onSaved();
     return true;
   }
 
-  function importSVG(file, onSuccess) {
+  // 「保存」。結びついたファイルへ確認なしで上書きする。
+  // 上書きできない事情（ファイル未確定・改名・許可なし・書き込み失敗）があれば「名前を付けて保存」へ委譲する。
+  // 戻り値の意味は saveFileAs と同じ。
+  async function saveFile(onSaved) {
+    if (!_fileHandle) return saveFileAs(onSaved);
+
+    // ボード名を変えた＝別名で保存したい、とみなす。「ボード名＝ファイル名」を保ちたいので上書きはしない。
+    // 比較は toFileName() を通した形で行う（ファイル名に使えない文字は落ちるため、生のボード名とは一致しないことがある）
+    if (_fileHandle.name !== toFileName(Model.getTitle())) return saveFileAs(onSaved);
+
+    if (!await ensureWritePermission(_fileHandle)) {
+      showToast('書き込みが許可されなかったため、保存先を選び直します');
+      return saveFileAs(onSaved);
+    }
+
+    // 上書きに失敗するのは主にファイルが移動・削除された場合。保存先を選び直してもらう
+    if (!await writeHandle(_fileHandle, buildSVGString())) return saveFileAs(onSaved);
+
+    save();
+    markSaved();
+    // 上書き保存は画面が何も変わらないので、保存できたことをトーストで知らせる
+    showToast('保存しました: ' + _fileHandle.name);
+    if (typeof onSaved === 'function') onSaved();
+    return true;
+  }
+
+  function clearFileHandle() {
+    _fileHandle = null;
+  }
+
+  // handle は File System Access API で開いた場合のみ渡される（<input type="file"> 経由では undefined）。
+  // 読み込みに成功したときだけ「保存」の上書き先として覚える。失敗時はボードが変わらないのでハンドルも触らない。
+  function importSVG(file, onSuccess, handle) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
@@ -346,6 +404,7 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
         const meta = doc.querySelector('metadata');
         const text = meta?.textContent?.trim();
         if (!text) throw new Error('openboard形式のメタデータが見つかりません');
+        _fileHandle = handle || null;
         onSuccess(JSON.parse(text), file.name);
       } catch (err) {
         showToast('読み込みに失敗しました: ' + err.message);
@@ -371,12 +430,12 @@ svg { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
     try {
       const file = await handle.getFile();
-      importSVG(file, onSuccess);
+      importSVG(file, onSuccess, handle);
     } catch (err) {
       showToast('ファイルを開けませんでした: ' + err.message);
     }
     return true;
   }
 
-  return { save, load, exportSVG, importSVG, openSVG, hasFileSystemAccess, showToast, markSaved, isDirty };
+  return { save, load, saveFile, saveFileAs, clearFileHandle, importSVG, openSVG, hasFileSystemAccess, showToast, markSaved, isDirty };
 })();

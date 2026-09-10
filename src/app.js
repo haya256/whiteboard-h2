@@ -1163,6 +1163,7 @@
     updateHistoryButtons();
     IO.save();
     IO.markSaved(); // 空の新規ボードは保存すべき内容がないので「保存済み」とする
+    IO.clearFileHandle(); // 別のボードになったので、直前まで開いていたファイルへは上書きしない
     refreshTextStylePopover();
   }
 
@@ -1172,11 +1173,24 @@
     const answer = await Dialog.confirmDiscard(Model.getTitle(), '新規作成');
     if (answer === 'cancel') return;
     // 保存を選んだのに保存できなかった（ダイアログをキャンセルした等）場合は新規作成しない
-    if (answer === 'save' && !(await IO.exportSVG(renderBoardName))) return;
+    if (answer === 'save' && !(await IO.saveFile(renderBoardName))) return;
     newBoard();
   });
 
-  document.getElementById('btn-export').addEventListener('click', () => IO.exportSVG(renderBoardName));
+  // 「保存」は結びついたファイルへ上書き（無ければ「名前を付けて保存」と同じ動作になる）
+  document.getElementById('btn-export').addEventListener('click', () => IO.saveFile(renderBoardName));
+  document.getElementById('btn-export-as').addEventListener('click', () => IO.saveFileAs(renderBoardName));
+
+  // Ctrl/Cmd+S で保存、Shift併用で名前を付けて保存。
+  // 編集中の内容を取りこぼさないよう、保存の前にフォーカスを外して確定させる
+  // （テキスト編集もボード名の入力欄も blur で確定する）。
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
+    e.preventDefault(); // ブラウザの「ページを保存」を止める
+    document.activeElement?.blur();
+    if (e.shiftKey) IO.saveFileAs(renderBoardName);
+    else IO.saveFile(renderBoardName);
+  });
 
   // 「開く」も現在のボードを捨てるため、未保存の変更があれば新規作成と同じ確認を出す。
   // 確認して「保存せずに開く」「保存して開く」が選ばれた場合だけ読み込みへ進む。
@@ -1186,7 +1200,7 @@
     const answer = await Dialog.confirmDiscard(Model.getTitle(), '開く');
     if (answer === 'cancel') return false;
     // 保存を選んだのに保存できなかった（ダイアログをキャンセルした等）場合は開かない
-    if (answer === 'save' && !(await IO.exportSVG(renderBoardName))) return false;
+    if (answer === 'save' && !(await IO.saveFile(renderBoardName))) return false;
     return true;
   }
 

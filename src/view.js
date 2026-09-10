@@ -301,7 +301,7 @@ const View = (() => {
     return g;
   }
 
-  // node.type に応じて対応する make*El を呼び分ける（renderAll / addNode / IO.exportSVG 共通）
+  // node.type に応じて対応する make*El を呼び分ける（renderAll / addNode / SVG 書き出し 共通）
   function makeNodeEl(node) {
     if (node.type === 'sticky') return makeStickyEl(node);
     if (node.type === 'shape') return makeShapeEl(node);
@@ -860,7 +860,7 @@ const View = (() => {
       startEditingEl(fo, div, onSave);
     },
 
-    // IO.exportSVG から使う：保存するSVGがキャンバスと同じDOM（foreignObject等）になるよう公開する
+    // IO.saveFileAs / IO.saveFile から使う：保存するSVGがキャンバスと同じDOM（foreignObject等）になるよう公開する
     makeNodeEl(node) { return makeNodeEl(node); }
   };
 })();
