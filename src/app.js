@@ -1227,6 +1227,17 @@
     if (await confirmBeforeOpen()) IO.importSVG(file, loadBoardData);
   });
 
+  // ---- 再読み込み・タブを閉じる前の確認 ----
+  // ボードの内容は localStorage から復元されるが、Undo 履歴と「保存」の上書き先（ファイルの結びつき）は
+  // 再読み込みで失われるため、中身のあるボードでは確認する。
+  // ダイアログの文言と選択肢はブラウザが決めるものでこちらからは指定できない。
+  // また、ページを一度も操作していない場合はブラウザの仕様でダイアログ自体が出ない。
+  window.addEventListener('beforeunload', e => {
+    if (!Model.getNodes().length && !Model.getEdges().length) return;
+    e.preventDefault();
+    e.returnValue = ''; // 仕様上は preventDefault だけでよいが、古いブラウザはこちらを見る
+  });
+
   // ---- ズームリセット / 全体表示 ----
 
   document.getElementById('btn-zoom-reset').addEventListener('click', () => {
