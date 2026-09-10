@@ -149,6 +149,11 @@
         <div class="settings-label">キャンバスの背景</div>
         <div class="settings-control" id="setting-background"></div>
       </div>
+      <div class="settings-row">
+        <div class="settings-label">新規ノードの色</div>
+        <div class="settings-control" id="setting-theme"></div>
+        <div class="settings-note">これから作る付箋・図形・テキスト・コネクタの色が変わります。すでに置いてある要素の色はそのままです。</div>
+      </div>
       <div class="settings-footer">
         <button id="settings-close">閉じる</button>
       </div>
@@ -185,9 +190,9 @@
         <li>リンク：右クリックメニューから設定すると、ノード右上に 🔗 が付きます。🔗 をクリックすると別タブで開きます（マウスを乗せると URL を確認できます）。</li>
         <li>右クリックメニュー：複製やリンクの設定、重なり順の変更・削除ができます。</li>
         <li>保存：<kbd>Ctrl</kbd>+<kbd>S</kbd> で開いているファイルに上書き保存、<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> で名前を付けて保存。</li>
-        <li>設定：「その他」の「⚙ 設定」からキャンバスの背景（ドット／宇宙）を変えられます。設定はこの端末のブラウザに保存され、どのボードを開いても同じ背景になります。</li>
+        <li>設定：「その他」の「⚙ 設定」から、キャンバスの背景（ドット／宇宙）と、新しく作る要素の色（ライト／ダーク）を変えられます。設定はこの端末のブラウザに保存され、どのボードを開いても同じ設定が使われます。</li>
       </ul>
-      <p class="welcome-note">「宇宙」の背景では、テキストとコネクタの既定の色（濃いグレー）が見えにくくなります。それぞれを選択すると出るスタイル編集から明るい色に変えてください。書き出す .svg の背景は設定にかかわらず薄いグレーのままです。</p>
+      <p class="welcome-note">「宇宙」の背景を使うときは、あわせて色を「ダーク」にすると、これから作るテキスト・コネクタ・図形が明るい色になって読みやすくなります。すでに置いてある要素の色は変わらないので、必要ならそれぞれを選択して出るスタイル編集から変えてください。書き出す .svg の背景は設定にかかわらず薄いグレーのままです。</p>
 
       <details class="welcome-section">
         <summary>データはどこに保存される？</summary>
@@ -220,8 +225,9 @@
   </div>
 
   <script src="src/shapes.js"></script>
-  <!-- view.js が背景の初期値を読むため、settings.js は先に読み込む -->
+  <!-- view.js が背景の初期値を、model.js が既定色を読むため、settings.js と theme.js は先に読み込む -->
   <script src="src/settings.js"></script>
+  <script src="src/theme.js"></script>
   <script src="src/model.js"></script>
   <script src="src/view.js"></script>
   <script src="src/io.js"></script>

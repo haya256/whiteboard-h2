@@ -1,15 +1,6 @@
 'use strict';
 
 const Model = (() => {
-  // 付箋の背景色の選択肢（黄・ピンク・水色・緑・紫の定番5色）。先頭が既定色（黄色）。
-  const STICKY_COLORS = [
-    '#FFF275', // 黄色（カナリアイエロー）
-    '#FF7EB9', // ピンク（エレクトリックピンク）
-    '#7AFCFF', // 水色（アクアブルー）
-    '#A7F3D0', // 緑（ミントグリーン）
-    '#E2B0FF'  // 紫（パステルパープル）
-  ];
-
   const DEFAULT_TITLE = '無題のボード';
 
   let _nodes = [];
@@ -90,8 +81,6 @@ const Model = (() => {
 
   return {
     getNodes: () => _nodes,
-    // 付箋の背景色の選択肢一覧（複製を返す）
-    getStickyColors: () => STICKY_COLORS.slice(),
     getEdges: () => _edges,
     // 後方互換：単一選択時のみIDを返す。複数選択・未選択時は null
     getSelectedId: () => (_selectedIds.size === 1 ? Array.from(_selectedIds)[0] : null),
@@ -165,10 +154,10 @@ const Model = (() => {
         width: W,
         height: H,
         content: '',
+        // 色は設定「新規ノードの色」のセットから取る（作成時にコピーするだけで、以後は各ノードが持つ）
         style: {
-          background: STICKY_COLORS[0],
+          ...Theme.get().sticky,
           fontSize: 32,
-          color: '#333333',
           bold: false,
           align: 'center',
           valign: 'middle'
@@ -191,8 +180,8 @@ const Model = (() => {
         height: H,
         content: '',
         style: {
+          ...Theme.get().text,
           fontSize: 32,
-          color: '#333333',
           bold: false,
           align: 'left'
         }
@@ -216,10 +205,8 @@ const Model = (() => {
         height: H,
         content: '',
         style: {
-          background: '#ffffff',
-          border: '#4a90e2',
+          ...Theme.get().shape,
           fontSize: 32,
-          color: '#333333',
           bold: false,
           align: 'center',
           valign: 'middle'
@@ -478,7 +465,7 @@ const Model = (() => {
         id: crypto.randomUUID(),
         type: 'connector',
         from, to,
-        style: { line: 'curved', arrow: 'end', color: '#333333', width: 2 }
+        style: { line: 'curved', arrow: 'end', ...Theme.get().edge, width: 2 }
       };
       _edges.push(edge);
       return edge;

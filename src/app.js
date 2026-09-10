@@ -449,7 +449,8 @@
 
   const STICKY_ASPECTS = [{ label: '1:1', ratio: 1 }, { label: '3:2', ratio: 1.5 }]; // 付箋の縦横比（横/縦）
   const FONT_SIZE_STEPS = [12, 14, 18, 24, 32, 48];
-  const TEXT_COLORS = ['#333333', '#757575', '#ffffff', '#e53935', '#fb8c00', '#43a047', '#1e88e5', '#8e24aa'];
+  // 色のパレット（付箋・文字・コネクタ）は設定「新規ノードの色」のセットが持つ（src/theme.js）。
+  // ポップオーバーは開くたびに組み立て直すので、そこで Theme.get() を読めば切り替えが反映される。
   const ALIGN_LABELS = { left: '左揃え', center: '中央揃え', right: '右揃え' };
   // 横位置アイコン（3本の横棒。長さと位置で左/中央/右を表す）
   const ALIGN_ICONS = {
@@ -484,8 +485,6 @@
   };
 
   const EDGE_WIDTHS = [{ label: '細', value: 1 }, { label: '中', value: 2 }, { label: '太', value: 4 }];
-  // 背景（点グリッド）に溶けて見えなくなるため、文字色パレットから白を除いたものを使う
-  const EDGE_COLORS = TEXT_COLORS.filter(c => c !== '#ffffff');
 
   function closeTextStylePopover() {
     textStylePopover.classList.remove('open');
@@ -539,7 +538,7 @@
       const bgGroup = document.createElement('span');
       bgGroup.className = 'tsp-group tsp-bg-colors';
       const currentBg = (style.background || '').toLowerCase();
-      Model.getStickyColors().forEach(c => {
+      Theme.get().stickyColors.forEach(c => {
         const sw = document.createElement('button');
         sw.type = 'button';
         sw.className = 'tsp-swatch tsp-swatch-bg';
@@ -625,7 +624,7 @@
     // ---- 文字色（8色パレット） ----
     const colorGroup = document.createElement('span');
     colorGroup.className = 'tsp-group tsp-colors';
-    TEXT_COLORS.forEach(c => {
+    Theme.get().textColors.forEach(c => {
       const sw = document.createElement('button');
       sw.type = 'button';
       sw.className = 'tsp-swatch';
@@ -787,7 +786,7 @@
     const colorRow = appendPopoverRow('色');
     const colorGroup = document.createElement('span');
     colorGroup.className = 'tsp-group tsp-colors';
-    EDGE_COLORS.forEach(c => {
+    Theme.get().edgeColors.forEach(c => {
       const sw = document.createElement('button');
       sw.type = 'button';
       sw.className = 'tsp-swatch';
@@ -1971,4 +1970,10 @@
   });
   document.addEventListener('scroll', () => { hideContextMenu(); hideLinkTooltip(); }, true);
   canvas.addEventListener('wheel', () => { hideContextMenu(); hideLinkTooltip(); });
+
+  // 色セットを切り替えたとき、開いたままのポップオーバーが古いパレットを出さないよう組み直す。
+  // src/theme.js のほうが先に購読しているので、現在のセットの更新はこれより先に走る。
+  // subscribe は登録時にも呼ばれるため、refreshTextStylePopover が参照する状態
+  // （drag / resize / editing）が初期化済みになるここまで下げている
+  Settings.subscribe('theme', () => refreshTextStylePopover());
 })();

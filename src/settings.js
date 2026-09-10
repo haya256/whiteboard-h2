@@ -9,7 +9,8 @@ const Settings = (() => {
   // 設定項目の一覧と既定値。保存済みの値のうちここに無いキーは読み捨てる
   // （古いバージョンで消した項目が残り続けないようにするため）。
   const DEFAULTS = {
-    background: 'dots' // キャンバスの背景。値は src/view.js の BACKGROUNDS のキー
+    background: 'dots', // キャンバスの背景。値は src/view.js の BACKGROUNDS のキー
+    theme: 'light'      // 新規ノードの色。値は src/theme.js の THEMES のキー
   };
 
   let _values = { ...DEFAULTS };

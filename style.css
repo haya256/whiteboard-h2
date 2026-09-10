@@ -1244,6 +1244,14 @@ body.palette-open {
   gap: 6px 18px;
 }
 
+/* 設定項目の補足文（何に効くのかを一行で添える） */
+.settings-note {
+  margin-top: 6px;
+  color: #777;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .settings-choice {
   display: inline-flex;
   align-items: center;
