@@ -166,7 +166,7 @@ REST API v2 が `isSupported: false` で返す要素があるときだけ、補�
 
 隔離されたコンテナ環境（GUIなし・ターミナルのみ）でも、Playwright の headless Chromium を使えば実際にアプリを操作して確認できます（画面表示は不要）。
 
-このリポジトリの `.devcontainer/` は個人のローカル設定として扱っており、`.gitignore` で除外しています（コンテナ設定を公開すると環境情報の開示につながりうるため）。必要な人は以下の内容で `.devcontainer/devcontainer.json` を自分で作成してください。
+このリポジトリの `.devcontainer/` は個人のローカル設定として扱っており、`.gitignore` で除外しています。公開すると VS Code / Codespaces の「Reopen in Container」等で中身を確認せずそのまま実行されてしまいうるため、あえて置かず、内容を読んで納得したうえで各自で作成してもらう形にしています。以下の内容で `.devcontainer/devcontainer.json` を作成してください。
 
 ```json
 {
