@@ -8,6 +8,7 @@
 //
 // 認証: config/miro.json の { "token": "..." } または環境変数 MIRO_TOKEN（読み取り権限 boards:read）。
 // v2 が読めない要素（isSupported: false）があるときだけ、補助として旧 v1 API の widgets も引く。
+// コメントは正式版の v2 に無いため、実験的 API（v2-experimental）から取る。
 // 出力: 仕様 JSON（省略時はスクラッチパッド相当として ./miro-<boardId>.spec.json）。
 //       仕様の output は data/<ボード名>_edited.svg になる。
 
@@ -17,6 +18,8 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const API = 'https://api.miro.com/v2';
 const API_V1 = 'https://api.miro.com/v1';
+// コメントは正式版の v2 には無く、実験的 API にだけある（/v2/.../comments は 400 を返す）
+const API_EXP = 'https://api.miro.com/v2-experimental';
 
 // ---- 引数 ----
 const argv = process.argv.slice(2);
@@ -91,6 +94,30 @@ async function fetchV1Widgets() {
     warnings.push(`旧 API (v1) から補助情報を取れませんでした（プレビューは復元できません）: ${e.message}`);
     return new Map();
   }
+}
+
+// ボードのコメントを取る。返信も含めてスレッド1本が1件（messages[] に全メッセージが入る）。
+// 実験的 API なので予告なく変わりうる。v1 と同じく、失敗しても警告だけ出して続行する。
+// ページングは items/connectors のカーソル方式ではなく offset/limit 方式。
+async function fetchComments(enc) {
+  const out = [];
+  try {
+    let offset = 0, total = Infinity;
+    while (offset < total) {
+      const res = await fetch(`${API_EXP}/boards/${enc}/comments?limit=50&offset=${offset}`,
+        { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const j = await res.json();
+      const page = j.data || [];
+      out.push(...page);
+      total = typeof j.total === 'number' ? j.total : out.length;
+      offset += j.limit || 50;
+      if (page.length === 0) break;
+    }
+  } catch (e) {
+    warnings.push(`コメントを取得できませんでした（実験的 API のため仕様変更の可能性があります）: ${e.message}`);
+  }
+  return out;
 }
 
 // 画像リソース（?redirect=false）は署名付き URL を返す JSON。それを辿って実体を取る
@@ -179,6 +206,21 @@ function fitFontSize(content, w, h) {
 }
 
 const VALIGN_MAP = { top: 'top', middle: 'middle', bottom: 'bottom' };
+
+// ---- コメントを置く吹き出しの大きさ ----
+// src/shapes.js の callout は pad [上0.05, 右0.08, 下0.3, 左0.08] で、下30%はしっぽの領域。
+// 文字が入るのは幅の84%・高さの65%なので、そのぶんを割り戻して外接矩形を決める。
+const COMMENT_FONT = 18;
+const COMMENT_CHARS_PER_LINE = 16; // 長文でも横に伸びすぎないよう、この文字数で折り返す想定にする
+function calloutSize(text) {
+  const fs_ = COMMENT_FONT;
+  const lines = text.split('\n')
+    .reduce((n, l) => n + Math.max(1, Math.ceil(l.length / COMMENT_CHARS_PER_LINE)), 0);
+  const innerW = COMMENT_CHARS_PER_LINE * fs_ + 20; // .shape-text の左右パディング 10px ずつ
+  // 行高 1.4 ＋ 上下パディング 6px ずつ。式どおりだと余裕がちょうど 0 になるので少しだけ足す
+  const innerH = lines * fs_ * 1.4 + 18;
+  return { w: Math.round(innerW / 0.84), h: Math.round(innerH / 0.65) };
+}
 const SHAPE_MAP = {
   rectangle: 'rect', round_rectangle: 'rect', circle: 'ellipse', rhombus: 'diamond',
   triangle: 'diamond', wedge_round_rectangle_callout: 'rect', flow_chart_process: 'rect',
@@ -195,7 +237,8 @@ const arrowOf = cap => cap && cap !== 'none';
   // v2 が読めない要素があるときだけ v1 を叩く（非推奨 API なので必要最小限にする）
   const needsV1 = items.some(it => it.isSupported === false || it.type === 'preview');
   const v1 = needsV1 ? await fetchV1Widgets() : new Map();
-  if (dumpPath) fs.writeFileSync(dumpPath, JSON.stringify({ board, items, connectors, v1: [...v1.values()] }, null, 2));
+  const comments = await fetchComments(enc);
+  if (dumpPath) fs.writeFileSync(dumpPath, JSON.stringify({ board, items, connectors, v1: [...v1.values()], comments }, null, 2));
 
   const byId = new Map(items.map(it => [it.id, it]));
 
@@ -313,6 +356,40 @@ const arrowOf = cap => cap && cap !== 'none';
   // フレームは他の要素の下に来るよう先頭へ
   nodes.sort((a, b) => (a.name.startsWith('frame:') ? -1 : 0) - (b.name.startsWith('frame:') ? -1 : 0));
 
+  // ---- コメント ----
+  // openboard にコメントという概念は無いので、吹き出しの図形として置く。
+  // しっぽの先がコメントの位置を指すように、吹き出し本体はその上へずらす
+  // （callout のしっぽの先はローカル座標で (w*0.28, h)）。
+  // ここで push するので、コメントは他のどの要素よりも前面に来る。
+  let resolvedCount = 0;
+  const orphanComments = []; // 座標が取れないコメント。ボードの右側へまとめて置く
+  for (const cm of comments) {
+    // 解決済みは取り込まない（残したくなったら薄い色で置く選択肢もある）
+    if (cm.resolved) { resolvedCount++; continue; }
+    const text = (cm.messages || []).map(m => htmlToText(m.content)).filter(Boolean).join('\n');
+    if (!text) continue;
+
+    // 要素にピン留めされたコメントは、API が座標を返さないことがある
+    // （position が { type: 'canvas' } だけで x / y を持たない）。内容は残したいので、
+    // ここでは貯めておき、原点シフトのあとでボードの右側へまとめて置く
+    const pos = cm.position || {};
+    if (typeof pos.x !== 'number' || typeof pos.y !== 'number') {
+      orphanComments.push(text);
+      continue;
+    }
+
+    const { w, h } = calloutSize(text);
+    nodes.push({
+      name: uniqueName('comment:' + text.split('\n')[0].slice(0, 20)),
+      type: 'shape', shape: 'callout', content: text,
+      cx: Math.round(pos.x + w * 0.22), cy: Math.round(pos.y - h / 2),
+      w, h, fontSize: COMMENT_FONT,
+      bg: '#FFF9DB', border: '#E0A800', color: '#333333',
+      align: 'left', valign: 'middle'
+    });
+  }
+  if (resolvedCount) warnings.push(`解決済みのコメント ${resolvedCount} 件は取り込みませんでした`);
+
   // ---- コネクタ ----
   const edges = [];
   const pairIndex = new Map();
@@ -346,6 +423,38 @@ const arrowOf = cap => cap && cap !== 'none';
   // ---- 座標を左上原点へ寄せ、ビューポートを内容に合わせる ----
   const minX = Math.min(...nodes.map(n => n.cx - (n.w || n.size || 0) / 2)), minY = Math.min(...nodes.map(n => n.cy - (n.h || n.size || 0) / 2));
   for (const n of nodes) { n.cx = Math.round(n.cx - minX + 40); n.cy = Math.round(n.cy - minY + 40); }
+
+  // ---- 座標が取れなかったコメント ----
+  // 捨てるには惜しい内容なので、ボードの右側へ縦に並べる。元の位置は分からないため、
+  // そうと分かる見出しを付ける（シフト後の座標系で置くので、上の平行移動より後に行う）
+  if (orphanComments.length) {
+    const right = Math.max(...nodes.map(n => n.cx + (n.w || n.size || 0) / 2));
+    const top = Math.min(...nodes.map(n => n.cy - (n.h || n.size || 0) / 2));
+    const left = Math.round(right + 120);
+    // 見出しは1行に収まる長さにする（board-from-spec.js の自動高さは改行の数から計算するため、
+    // 折り返すと下が切れる）。幅と高さは明示して渡す
+    const HEAD_W = 480;
+    nodes.push({
+      name: uniqueName('comments-title'), type: 'text',
+      content: 'コメント（元の位置は取得できませんでした）',
+      cx: left + HEAD_W / 2, cy: top, w: HEAD_W, h: 40, fontSize: 20, color: '#757575', align: 'left'
+    });
+    let y = top;
+    for (const text of orphanComments) {
+      const { w, h } = calloutSize(text);
+      y += h / 2 + 32;
+      nodes.push({
+        name: uniqueName('comment:' + text.split('\n')[0].slice(0, 20)),
+        type: 'shape', shape: 'callout', content: text,
+        cx: Math.round(left + w / 2), cy: Math.round(y),
+        w, h, fontSize: COMMENT_FONT,
+        bg: '#FFF9DB', border: '#E0A800', color: '#333333',
+        align: 'left', valign: 'middle'
+      });
+      y += h / 2;
+    }
+    warnings.push(`位置が取れないコメント ${orphanComments.length} 件はボードの右側にまとめました（要素にピン留めされたコメントは API が座標を返しません）`);
+  }
 
   const safeName = (board.name || boardId).replace(/[/\\:*?"<>|\x00-\x1f]/g, '').trim() || 'miro-board';
   const spec = {
@@ -388,7 +497,7 @@ const arrowOf = cap => cap && cap !== 'none';
   fs.writeFileSync(specOut, JSON.stringify(spec, null, 2));
 
   console.log(`ボード: ${board.name}（${boardId}）`);
-  console.log(`要素: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}、コネクタ ${connectors.length}`);
+  console.log(`要素: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}、コネクタ ${connectors.length}、コメント ${comments.length}`);
   console.log(`仕様 JSON: ${specOut}（ノード ${nodes.length}、コネクタ ${edges.length}）`);
   for (const w of warnings) console.log('  注意: ' + w);
   console.log(`次: node scripts/board-from-spec.js "${specOut}"`);
