@@ -31,7 +31,7 @@ node scripts/board-from-spec.js <spec.json>
 - **v1 API の併用**: Miro API v2 は一部の要素を `isSupported: false`（中身なし）で返す。そういう要素があるときだけ、スクリプトが旧 v1 API（`/v1/boards/{id}/widgets`）も引いて補う。リンクプレビューの URL とタイトルは v1 でしか取れない。v1 は非推奨なので、止まっていたら警告を出してプレビューだけ諦める。
 - ステンシル（v2 では `shape`、v1 では `stencil`）は、どちらの API も座標以外のスタイルを返さない。既定の白地＋青枠の四角で描き、警告に出す。実物と見た目が違うので、報告して仕様 JSON の `border` などで直してもらう。
 - 画像は `--images` で扱いを選ぶ。既定は `fit`。
-  - `fit`: 原寸を取得し、`src/image.js` と同じ基準（長辺1600px・JPEG 0.85・透過があれば PNG）で再エンコードする。sharp（optionalDependencies）が要る。無い場合は警告を出して `original` になる
+  - `fit`: 原寸を取得し、長辺1600px・不透過は JPEG 0.85 で再エンコードする。透過画像は PNG(可逆) と WebP(quality 82) を両方作り、WebP が明確に小さい（PNG の 70% 未満）ときだけ WebP を採用する（そうでなければ画質優先で PNG のまま）。Miro 取り込み専用の挙動で、アプリ内でドラッグ&ドロップ追加した画像（`src/image.js`）は今まで通り PNG/JPEG のみ。sharp（optionalDependencies）が要る。無い場合は警告を出して `original` になる
   - `original`: 原寸。画質は最高だがファイルが非常に大きくなる
   - `preview`: Miro が返すサムネイルだが**長辺120px しかない**ので内容は読めない。目印にしかならない
   - `none`: 取り込まない

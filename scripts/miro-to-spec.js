@@ -104,10 +104,13 @@ async function fetchImageBytes(imageUrl, format) {
   if (!res.ok) throw new Error(`画像本体 ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }
-// src/image.js の compress と同じ基準で縮小・再エンコードする。
-// 長辺 1600px 以下へ縮小し、透過が無ければ白背景で JPEG 0.85、あれば PNG のまま。
-// 元より大きくなる場合は元データを使う（アプリ側の判断と同じ）。
-const MAX_EDGE = 1600, JPEG_QUALITY = 85;
+// src/image.js の compress とは異なり、Miro 取り込み専用に WebP も候補にする（アプリ内の
+// ドラッグ&ドロップ画像追加は今まで通り PNG/JPEG のみ）。透過が無ければ白背景 JPEG 0.85、
+// 透過があれば PNG(可逆) と WebP(quality 82, 非可逆) を両方作って小さい方を採用する。
+// PNG の透過画像は WebP にすると概ね 1/5〜1/6 に縮むが非可逆再圧縮になるので、WebP の方が
+// 明確に小さいときだけ採用し、大差なければ画質を優先して PNG を残す。
+// 長辺 1600px を超える画像は縮小する。元より大きくなる場合は元データを使う（アプリ側の判断と同じ）。
+const MAX_EDGE = 1600, JPEG_QUALITY = 85, WEBP_QUALITY = 82;
 async function refit(buf) {
   const img = sharp(buf, { failOn: 'none' });
   const meta = await img.metadata();
@@ -117,9 +120,14 @@ async function refit(buf) {
   const pipeline = long > MAX_EDGE ? img.resize({ width: meta.width >= meta.height ? MAX_EDGE : null, height: meta.height > meta.width ? MAX_EDGE : null }) : img;
   // 実際に透明なピクセルがあるかを見る（アルファチャンネルの有無だけでは判断しない）
   const transparent = meta.hasAlpha ? (await pipeline.clone().ensureAlpha().extractChannel('alpha').stats()).channels[0].min < 255 : false;
-  const out = transparent
-    ? await pipeline.clone().png({ compressionLevel: 9 }).toBuffer()
-    : await pipeline.clone().flatten({ background: '#ffffff' }).jpeg({ quality: JPEG_QUALITY }).toBuffer();
+  let out;
+  if (transparent) {
+    const png = await pipeline.clone().png({ compressionLevel: 9 }).toBuffer();
+    const webp = await pipeline.clone().webp({ quality: WEBP_QUALITY }).toBuffer();
+    out = webp.length < png.length * 0.7 ? webp : png;
+  } else {
+    out = await pipeline.clone().flatten({ background: '#ffffff' }).jpeg({ quality: JPEG_QUALITY }).toBuffer();
+  }
   return out.length < buf.length ? out : buf;
 }
 
