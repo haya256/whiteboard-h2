@@ -1,10 +1,11 @@
 'use strict';
 
 // 画像追加時の圧縮ユーティリティ。localStorage 容量を節約するため、
-// 追加時に長辺を MAX_EDGE 以下へ縮小し、JPEG/PNG で再エンコードする。
+// 追加時に長辺を MAX_EDGE 以下へ縮小し、JPEG/PNG（透過は WebP も候補）で再エンコードする。
 const ImageUtil = (() => {
   const MAX_EDGE = 1600; // 長辺の上限 px
   const JPEG_QUALITY = 0.85; // JPEG 再エンコード品質
+  const WEBP_QUALITY = 0.82; // WebP 再エンコード品質（PNG より明確に小さいときだけ採用）
 
   // FileReader で file を dataURL に変換する
   function readAsDataURL(file) {
@@ -65,7 +66,14 @@ const ImageUtil = (() => {
         const transparent = hasTransparency(ctx, width, height);
         let resultSrc;
         if (transparent) {
-          resultSrc = canvas.toDataURL('image/png');
+          const png = canvas.toDataURL('image/png');
+          const webp = canvas.toDataURL('image/webp', WEBP_QUALITY);
+          // 非対応ブラウザは image/webp 指定でも仕様上 PNG にフォールバックするので、
+          // 返ってきた dataURL の MIME で対応状況を判定できる。
+          // WebP は非可逆再圧縮になるため、PNG より明確に小さい（70% 未満）ときだけ採用する。
+          resultSrc = (webp.startsWith('data:image/webp') && webp.length < png.length * 0.7)
+            ? webp
+            : png;
         } else {
           // JPEG は透過を保持できないため、白背景で塗ってから描画し直す
           ctx.globalCompositeOperation = 'destination-over';
