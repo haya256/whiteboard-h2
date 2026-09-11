@@ -162,6 +162,28 @@ REST API v2 が `isSupported: false` で返す要素があるときだけ、補�
 
 `.svg` は画像を data URI で持ち、しかも `href` / `xlink:href` / 埋め込み JSON の3か所に入るため、**元画像の約4倍**の大きさになります。自動保存を効かせたい場合は `fit` を使ってください。
 
+## 開発用コンテナ（任意）
+
+隔離されたコンテナ環境（GUIなし・ターミナルのみ）でも、Playwright の headless Chromium を使えば実際にアプリを操作して確認できます（画面表示は不要）。
+
+このリポジトリの `.devcontainer/` は個人のローカル設定として扱っており、`.gitignore` で除外しています（コンテナ設定を公開すると環境情報の開示につながりうるため）。必要な人は以下の内容で `.devcontainer/devcontainer.json` を自分で作成してください。
+
+```json
+{
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu24.04",
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {}
+    },
+    "postCreateCommand": "npm install && npx playwright install --with-deps chromium"
+}
+```
+
+- `features` で Node.js を導入します（ベースイメージには含まれていません）。
+- `postCreateCommand` はコンテナ作成時（ネットワークが使えるタイミング）に一度だけ実行され、`npm install` に加えて Playwright 用の Chromium 本体と必要な OS ライブラリ（`--with-deps`）をまとめて入れます。これにより、コンテナ起動後はオフラインでも headless Chromium での動作確認ができます。
+- VS Code / Codespaces であれば「Reopen in Container」でこの設定が使われます。
+
+`playwright` は `devDependencies` に含まれているため（`npm install` で導入済み）、コンテナ側の準備さえ整えば `require('playwright')` の `chromium.launch()` ですぐに使えます。
+
 ## WSL2 での注意
 
 初回のみ以下のライブラリが必要です：
