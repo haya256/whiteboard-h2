@@ -58,6 +58,7 @@
             <input type="file" id="btn-image" accept="image/*" multiple>
           </label>
           <button id="btn-connector">→ コネクタ</button>
+          <button id="btn-draw" title="ドラッグで手書きの線を描く（Esc で終了）">✎ 手書き</button>
           <button class="ribbon-more" type="button" hidden aria-label="挿入のその他の操作" aria-expanded="false">⋯</button>
         </div>
         <div class="ribbon-menu" hidden></div>
@@ -186,6 +187,7 @@
         <li>削除：選択して <kbd>Delete</kbd>。</li>
         <li>複製：選択して <kbd>Ctrl</kbd>+<kbd>D</kbd>、または右クリックメニューの「複製」。</li>
         <li>つなぐ：「挿入」の「→ コネクタ」を押してから2つのノードをクリック。</li>
+        <li>手書き：「挿入」の「✎ 手書き」を押してからドラッグすると、軌跡がそのまま線になります（<kbd>Esc</kbd> で終了）。描いた線は付箋などと同じように選択・移動・サイズ変更ができます。</li>
         <li>ズームとパン：マウスホイールでズーム、右ボタンドラッグまたは <kbd>Space</kbd>+ドラッグでパン。</li>
         <li>リンク：右クリックメニューから設定すると、ノード右上に 🔗 が付きます。🔗 をクリックすると別タブで開きます（マウスを乗せると URL を確認できます）。</li>
         <li>右クリックメニュー：複製やリンクの設定、重なり順の変更・削除ができます。</li>
@@ -225,6 +227,7 @@
   </div>
 
   <script src="src/shapes.js"></script>
+  <script src="src/draw.js"></script>
   <!-- view.js が背景の初期値を、model.js が既定色を読むため、settings.js と theme.js は先に読み込む -->
   <script src="src/settings.js"></script>
   <script src="src/theme.js"></script>

@@ -142,13 +142,16 @@
 
   function performUndo() {
     if (editing) return; // テキスト編集中はブラウザ標準のundoに任せる（横取りしない）
-    if (connectMode) { setConnectMode(false); return; } // 接続モード中はまずモード解除のみ行う
+    // 接続・手書きモード中はまずモード解除のみ行う
+    if (connectMode) { setConnectMode(false); return; }
+    if (drawMode) { setDrawMode(false); return; }
     if (History.undo()) updateHistoryButtons();
   }
 
   function performRedo() {
     if (editing) return;
     if (connectMode) { setConnectMode(false); return; }
+    if (drawMode) { setDrawMode(false); return; }
     if (History.redo()) updateHistoryButtons();
   }
 
@@ -485,6 +488,8 @@
   };
 
   const EDGE_WIDTHS = [{ label: '細', value: 1 }, { label: '中', value: 2 }, { label: '太', value: 4 }];
+  // 手書きの線はコネクタより太めが使いやすいので、別の段階を用意する
+  const DRAW_WIDTHS = [{ label: '細', value: 2 }, { label: '中', value: 4 }, { label: '太', value: 8 }];
 
   function closeTextStylePopover() {
     textStylePopover.classList.remove('open');
@@ -523,7 +528,7 @@
     textStylePopover.style.top = Math.round(y) + 'px';
   }
 
-  // ポップオーバーの中身を生成する（サイズ / 色 / 太字 / 横位置）
+  // ノード用ポップオーバーの中身を生成する（サイズ / 色 / 太字 / 横位置）
   function buildTextStylePopover(node) {
     textStylePopover.innerHTML = '';
     const style = node.style || {};
@@ -802,6 +807,59 @@
     colorRow.appendChild(colorGroup);
   }
 
+  // 手書きの線用ポップオーバーの中身を生成する（太さ / 色）。
+  // 文字を持たないノードなので、コネクタ用の「線」の行から線種と矢印を除いた形にしている
+  function buildDrawStylePopover(node) {
+    textStylePopover.innerHTML = '';
+    const s = node.style || {};
+    const currentColor = (s.color || '#333333').toLowerCase();
+
+    const lineRow = appendPopoverRow('線');
+    const widthGroup = document.createElement('span');
+    widthGroup.className = 'tsp-group';
+    DRAW_WIDTHS.forEach(({ label, value }) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tsp-width' + (s.width === value ? ' active' : '');
+      btn.title = '太さ ' + value;
+      btn.textContent = label;
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        applyDrawStylePatch(node.id, { width: value });
+      });
+      widthGroup.appendChild(btn);
+    });
+    lineRow.appendChild(widthGroup);
+
+    const colorRow = appendPopoverRow('色');
+    const colorGroup = document.createElement('span');
+    colorGroup.className = 'tsp-group tsp-colors';
+    Theme.get().edgeColors.forEach(c => {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'tsp-swatch';
+      if (c.toLowerCase() === currentColor) sw.classList.add('active');
+      sw.style.background = c;
+      sw.title = c;
+      sw.addEventListener('click', ev => {
+        ev.stopPropagation();
+        applyDrawStylePatch(node.id, { color: c });
+      });
+      colorGroup.appendChild(sw);
+    });
+    colorRow.appendChild(colorGroup);
+  }
+
+  // 手書きの線のポップオーバー共通の適用処理（applyEdgeStylePatch のノード版）
+  function applyDrawStylePatch(id, patch) {
+    const node = Model.findById(id);
+    if (!node) return;
+    Model.updateStyle(id, patch);
+    View.updateNodeStyle(node);
+    commit();
+    refreshTextStylePopover();
+  }
+
   // コネクタのポップオーバーの各ボタン共通の適用処理：Model更新→View反映→履歴確定→再表示
   function applyEdgeStylePatch(id, patch) {
     const edge = Model.findEdgeById(id);
@@ -813,7 +871,8 @@
   }
 
   // 選択が「1ノードだけ・画像以外・編集中でない・ドラッグ/リサイズ中でない」なら
-  // ノード用ポップオーバーを生成・配置して表示、コネクタが選択中ならコネクタ用ポップオーバーを表示、
+  // ノード用ポップオーバー（手書きの線は太さと色だけの専用の内容）を生成・配置して表示、
+  // コネクタが選択中ならコネクタ用ポップオーバーを表示、
   // それ以外は閉じる（ノードとコネクタのスタイル編集を1つのポップオーバー要素で兼用する）。
   // 選択確定・ズーム・パン終了・移動/リサイズ終了・スタイル変更後など、幅広い箇所から呼ぶ。
   function refreshTextStylePopover() {
@@ -834,7 +893,9 @@
     if (ids.length !== 1 || editing || drag || resize) { closeTextStylePopover(); return; }
     const node = Model.findById(ids[0]);
     if (!node || node.type === 'image' || !node.style) { closeTextStylePopover(); return; }
-    buildTextStylePopover(node);
+    // 手書きの線は文字を持たないので、太さと色だけの専用の内容にする
+    if (node.type === 'draw') buildDrawStylePopover(node);
+    else buildTextStylePopover(node);
     textStylePopover.classList.add('open');
     positionTextStylePopover(node);
   }
@@ -1122,9 +1183,81 @@
     connectFrom = null;
     btnConnector.classList.toggle('active', on);
     canvas.classList.toggle('connecting', on);
+    if (on) setDrawMode(false); // モードは同時に1つだけ
   }
 
   btnConnector.addEventListener('click', () => setConnectMode(!connectMode));
+
+  // ---- 手書き（ペン）モード ----
+  // 接続モードと違い、1本描いてもモードは続く（Esc かボタン再クリックで抜ける）。
+  // 描いている間は stroke に軌跡（ワールド座標）を貯め、マウスを離した時点で
+  // Model.addDrawing() が外接矩形と正規化点列にまとめてノード1件にする。
+
+  const btnDraw = document.getElementById('btn-draw');
+  let drawMode = false;
+  let stroke = null;
+  const STROKE_WIDTH = Model.getDefaultStrokeWidth(); // 描くときの太さ（描いたあとはスタイル編集で変えられる）
+
+  function setDrawMode(on) {
+    drawMode = on;
+    btnDraw.classList.toggle('active', on);
+    canvas.classList.toggle('drawing', on);
+    if (on) {
+      setConnectMode(false); // モードは同時に1つだけ
+      // 描き始めたときに選択枠やポップオーバーが残っていると邪魔になるので先に片付ける
+      Model.clearSelection();
+      renderSelection();
+      closeTextStylePopover();
+      closeLinkPopover();
+    }
+  }
+
+  btnDraw.addEventListener('click', () => setDrawMode(!drawMode));
+
+  // 直前の点からこれ以上離れたときだけ点を足す（画面上の距離。ズームに依らず一定の細かさになる）
+  const STROKE_SAMPLE_PX = 2;
+  // 点列の間引き（Ramer–Douglas–Peucker）の許容誤差。同じく画面上の距離で効かせる
+  const STROKE_SIMPLIFY_PX = 0.8;
+
+  function strokeStyle() {
+    return { color: Theme.get().edge.color, width: STROKE_WIDTH };
+  }
+
+  function startStroke(e) {
+    e.preventDefault();
+    const pt = View.svgPoint(e);
+    stroke = { points: [[pt.x, pt.y]] };
+    View.updateTempStroke(stroke.points, strokeStyle());
+    document.addEventListener('mousemove', onStrokeMove);
+    document.addEventListener('mouseup', onStrokeUp);
+  }
+
+  function onStrokeMove(e) {
+    if (!stroke) return;
+    const pt = View.svgPoint(e);
+    const last = stroke.points[stroke.points.length - 1];
+    const min = STROKE_SAMPLE_PX / View.getViewport().zoom;
+    if (Math.hypot(pt.x - last[0], pt.y - last[1]) < min) return;
+    stroke.points.push([pt.x, pt.y]);
+    View.updateTempStroke(stroke.points, strokeStyle());
+  }
+
+  function onStrokeUp() {
+    document.removeEventListener('mousemove', onStrokeMove);
+    document.removeEventListener('mouseup', onStrokeUp);
+    View.endTempStroke();
+    if (!stroke) return;
+
+    const points = Draw.simplify(stroke.points, STROKE_SIMPLIFY_PX / View.getViewport().zoom);
+    stroke = null;
+
+    // 描いた線は選択しない。連続で描くツールなので、毎回選択枠とスタイル編集が
+    // 開いては消えると手元がちらつくため（色・太さを変えるときはモードを抜けて選び直す）
+    const node = Model.addDrawing(points);
+    if (!node) return;
+    View.addNode(node);
+    commit();
+  }
 
   // SVGファイル（.svg）読み込み後の共通処理。File System Access API 経由・
   // 従来の <input type="file"> 経由のどちらの「開く」からも呼ぶ
@@ -1148,6 +1281,7 @@
   // ボードを空にしてボード名を既定に戻す。未保存の変更がある場合は呼び出し側で確認してから呼ぶ。
   function newBoard() {
     setConnectMode(false);
+    setDrawMode(false);
     closeLinkPopover();
     Model.setNodes([]);
     Model.setEdges([]);
@@ -1537,6 +1671,13 @@
       return;
     }
 
+    // ---- 手書きモード中：対象を問わずドラッグの軌跡を線にする ----
+    // （右ボタン・中ボタン・Space のパンは上で先に処理しているので、ペン中でも移動できる）
+    if (drawMode) {
+      startStroke(e);
+      return;
+    }
+
     // ---- リンクバッジ：選択もドラッグもせず、mouseup（click）でリンクを開くだけにする ----
     if (e.target.closest('.link-badge')) {
       e.preventDefault();
@@ -1722,11 +1863,12 @@
 
   document.addEventListener('keydown', e => {
     // Esc：右クリックメニュー表示中はそれを閉じる。次にリンクポップオーバー表示中はそれを閉じる。
-    // 次に接続モード中はそちらを優先して解除。それ以外は選択解除
+    // 次に接続モード・手書きモード中はそちらを優先して解除。それ以外は選択解除
     if (e.key === 'Escape') {
       if (contextMenu.classList.contains('open')) { hideContextMenu(); return; }
       if (linkPopover.classList.contains('open')) { closeLinkPopover(); return; }
       if (connectMode) { setConnectMode(false); return; }
+      if (drawMode) { setDrawMode(false); return; }
       if (!editing) {
         Model.clearSelection();
         renderSelection();
@@ -1795,7 +1937,7 @@
   // Ctrl/Cmd+D：選択中のノードを複製する（ブラウザのブックマーク登録は抑止する）
   document.addEventListener('keydown', e => {
     if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'd') return;
-    if (editing || connectMode) return;
+    if (editing || connectMode || drawMode) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     if (!Model.getSelectedIds().length) return;
@@ -1824,7 +1966,7 @@
   // Ctrl/Cmd+G：グループ化、Ctrl/Cmd+Shift+G：グループ解除
   document.addEventListener('keydown', e => {
     if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'g') return;
-    if (editing || connectMode) return;
+    if (editing || connectMode || drawMode) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     if (!Model.getSelectedIds().length) return;
@@ -1920,7 +2062,7 @@
     // 右ボタンドラッグ（パン）の直後はメニューを出さない
     if (suppressContextMenu) { suppressContextMenu = false; return; }
     closeLinkPopover();
-    if (connectMode) return;
+    if (connectMode || drawMode) return;
 
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) { hideContextMenu(); return; } // 空白の右クリックはブラウザ標準メニューを抑止するのみ

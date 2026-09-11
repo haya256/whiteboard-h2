@@ -6,6 +6,7 @@ const View = (() => {
   let _canvas;
   let _viewport; // <g id="viewport"> パン・ズーム対象レイヤー（ノード・コネクタをまとめる）
   let _groupFrame = null; // グループ選択中に出す破線枠（1つだけ作って使い回す）
+  let _tempStroke = null; // 手書きの描画中だけ出すプレビュー用の<path>（確定時にノードへ置き換える）
   let _vp = { x: 0, y: 0, zoom: 1 }; // 現在のビューポート状態
 
   // ビューポートのtransform属性を現在の状態から再設定する
@@ -301,12 +302,63 @@ const View = (() => {
     return g;
   }
 
+  // ---- 手書き（フリーハンド）の線 ----
+  // 見た目に効く属性（stroke / stroke-width / linecap など）はCSSクラスではなく要素に直接付ける。
+  // こうしておくと .svg 書き出し（io.js の EXPORT_CSS）へ規則を転記しなくても、
+  // 書き出したファイルをブラウザで開いたときに画面と同じ見た目になる
+  function makeDrawEl(node) {
+    const { width: w, height: h } = node;
+    const d = Draw.pathD(node.points, w, h);
+
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.classList.add('node', 'draw');
+    g.dataset.id = node.id;
+    g.setAttribute('transform', `translate(${node.x},${node.y})`);
+
+    // クリック判定用の透明な太い線（コネクタの .edge-hit と同じ役割）。
+    // 細い線でもつかめるよう、見える線より太くしてある
+    const hit = document.createElementNS(SVG_NS, 'path');
+    hit.classList.add('draw-hit');
+    hit.setAttribute('d', d);
+    hit.setAttribute('stroke-width', hitWidth(node.style.width));
+    g.appendChild(hit);
+
+    // 実際に見える線
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.classList.add('draw-path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', node.style.color);
+    path.setAttribute('stroke-width', node.style.width);
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    g.appendChild(path);
+
+    // 選択枠表示用（線そのものには枠を出せないので画像ノードと同じく透明な矩形を重ねる）
+    const frame = document.createElementNS(SVG_NS, 'rect');
+    frame.classList.add('draw-frame');
+    frame.setAttribute('width', w);
+    frame.setAttribute('height', h);
+    frame.setAttribute('fill', 'none');
+    g.appendChild(frame);
+
+    makeResizeHandles(w, h).forEach(el => g.appendChild(el));
+    appendLinkBadgeIfNeeded(g, node);
+    return g;
+  }
+
+  // 当たり判定の線幅。細い線でもつかめる最低幅を確保しつつ、太い線ではそれに追従させる
+  function hitWidth(strokeWidth) {
+    return Math.max(14, (strokeWidth || 2) + 8);
+  }
+
   // node.type に応じて対応する make*El を呼び分ける（renderAll / addNode / SVG 書き出し 共通）
   function makeNodeEl(node) {
     if (node.type === 'sticky') return makeStickyEl(node);
     if (node.type === 'shape') return makeShapeEl(node);
     if (node.type === 'image') return makeImageEl(node);
     if (node.type === 'text') return makeTextEl(node);
+    if (node.type === 'draw') return makeDrawEl(node);
     return null;
   }
 
@@ -692,6 +744,29 @@ const View = (() => {
       updateEmptyHint();
     },
 
+    // ---- 手書きの描画中プレビュー ----
+    // マウスを離すまではまだノードを作らず、ビューポート層に置いた1本の<path>だけを更新する
+    // （ワールド座標をそのまま d にするので、正規化は確定時に Model.addDrawing がまとめて行う）。
+
+    updateTempStroke(worldPoints, style) {
+      if (!_tempStroke) {
+        _tempStroke = document.createElementNS(SVG_NS, 'path');
+        _tempStroke.classList.add('draw-path', 'draw-temp');
+        _tempStroke.setAttribute('fill', 'none');
+        _tempStroke.setAttribute('stroke-linecap', 'round');
+        _tempStroke.setAttribute('stroke-linejoin', 'round');
+        _viewport.appendChild(_tempStroke);
+      }
+      _tempStroke.setAttribute('stroke', style.color);
+      _tempStroke.setAttribute('stroke-width', style.width);
+      _tempStroke.setAttribute('d', Draw.rawPathD(worldPoints));
+    },
+
+    endTempStroke() {
+      _tempStroke?.remove();
+      _tempStroke = null;
+    },
+
     moveNode(id, x, y) {
       const el = _canvas.querySelector(`[data-id="${id}"]`);
       if (el) el.setAttribute('transform', `translate(${x},${y})`);
@@ -732,6 +807,12 @@ const View = (() => {
         const fo = el.querySelector('.sticky-fo');
         if (bg) { bg.setAttribute('width', w); bg.setAttribute('height', h); }
         if (fo) { fo.setAttribute('width', w); fo.setAttribute('height', h); }
+      } else if (node.type === 'draw') {
+        // 点列は 0..1 の正規化座標なので、新しい幅・高さで d を組み直すだけで拡大縮小できる
+        const d = Draw.pathD(node.points, w, h);
+        el.querySelectorAll('.draw-path, .draw-hit').forEach(p => p.setAttribute('d', d));
+        const frame = el.querySelector('.draw-frame');
+        if (frame) { frame.setAttribute('width', w); frame.setAttribute('height', h); }
       } else {
         return;
       }
@@ -899,6 +980,16 @@ const View = (() => {
           if (node.style.background) bg.setAttribute('fill', node.style.background);
           if (node.style.border) bg.setAttribute('stroke', node.style.border);
         }
+      } else if (node.type === 'draw') {
+        // 手書きの線は文字を持たないのでここで終わり
+        const path = el.querySelector('.draw-path');
+        if (path) {
+          path.setAttribute('stroke', node.style.color);
+          path.setAttribute('stroke-width', node.style.width);
+        }
+        const hit = el.querySelector('.draw-hit');
+        if (hit) hit.setAttribute('stroke-width', hitWidth(node.style.width));
+        return;
       }
 
       const div = el.querySelector('.sticky-text') || el.querySelector('.shape-text') || el.querySelector('.text-content');

@@ -188,7 +188,8 @@ body.palette-open {
 #btn-image { display: none; }
 
 #btn-shapes[aria-pressed="true"],
-#btn-connector.active {
+#btn-connector.active,
+#btn-draw.active {
   background: #4a90e2 !important;
   color: #fff !important;
 }
@@ -268,7 +269,8 @@ body.palette-open {
 
 /* 選択中コネクタの青は状態表示なのでメニュー内でも残す */
 #toolbar .ribbon-menu #btn-shapes[aria-pressed="true"],
-#toolbar .ribbon-menu #btn-connector.active {
+#toolbar .ribbon-menu #btn-connector.active,
+#toolbar .ribbon-menu #btn-draw.active {
   background: #4a90e2 !important;
   color: #fff !important;
 }
@@ -398,7 +400,8 @@ body.palette-open {
   user-select: none;
 }
 
-#canvas.connecting {
+#canvas.connecting,
+#canvas.drawing {
   cursor: crosshair;
 }
 
@@ -524,6 +527,41 @@ body.palette-open {
   stroke-width: 2.5;
 }
 
+/* ---- 手書き（フリーハンド）の線 ---- */
+/* 線そのもの（.draw-path）の色・太さ・線端は src/view.js が要素の属性として直接付ける。
+   書き出した .svg をブラウザで開いたときも同じ見た目になるようにするため、ここには
+   見た目に必須の指定を置かない（io.js の EXPORT_CSS へ転記する必要がなくなる）。
+   .draw-path に non-scaling-stroke を付けていないのも意図的で、手書きの線はボード上の
+   実体なので、ズームや拡大縮小では線幅も一緒に変わるのが正しい。 */
+.draw-path {
+  fill: none;
+  pointer-events: none;
+}
+
+/* クリック判定を広げるための透明な太い線（コネクタの .edge-hit と同じ役割）。
+   実際の太さは線の太さに応じて src/view.js が設定する */
+.draw-hit {
+  fill: none;
+  stroke: transparent;
+  pointer-events: stroke;
+  cursor: grab;
+}
+
+/* 描画中のプレビュー線。確定前なのでクリック対象にしない */
+.draw-temp {
+  pointer-events: none;
+}
+
+/* 選択枠は線に直接引けないので、画像ノードと同じく外接矩形に出す */
+.draw-frame {
+  pointer-events: none;
+}
+
+.node.selected .draw-frame {
+  stroke: #4a90e2;
+  stroke-width: 2.5;
+}
+
 /* ---- Text node（背景・枠なしテキスト） ---- */
 .text-frame {
   fill: transparent; /* 背景は見せないが、クリック・ドラッグの当たり判定として必要 */
@@ -580,7 +618,8 @@ body.palette-open {
 
 /* ズームで拡大縮小されてもストローク（線）幅は画面上一定に保つ。
    ハンドル自体の大きさや選択枠の太さがズームで変わるのは許容する。 */
-.sticky-bg, .shape-bg, .image-frame, .text-frame, .resize-handle, .edge-line, .edge-hit {
+.sticky-bg, .shape-bg, .image-frame, .text-frame, .resize-handle, .edge-line, .edge-hit,
+.draw-frame, .draw-hit {
   vector-effect: non-scaling-stroke;
 }
 

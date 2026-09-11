@@ -2,6 +2,7 @@
 
 const Model = (() => {
   const DEFAULT_TITLE = '無題のボード';
+  const DEFAULT_STROKE_WIDTH = 4; // 手書きの線の既定の太さ（スタイル編集の「中」と同じ）。描画中のプレビューも同じ値を使う
 
   let _nodes = [];
   let _edges = [];
@@ -93,6 +94,8 @@ const Model = (() => {
     // ---- ボード名 ----
     getTitle: () => _title,
     getDefaultTitle: () => DEFAULT_TITLE,
+    // 手書きの線の既定の太さ（src/app.js が描画中のプレビューにも使うので公開する）
+    getDefaultStrokeWidth: () => DEFAULT_STROKE_WIDTH,
     // title を trim して設定する。空になった場合は既定のボード名に戻す
     setTitle(title) {
       const trimmed = String(title == null ? '' : title).trim();
@@ -236,6 +239,28 @@ const Model = (() => {
         width: w,
         height: h,
         src
+      };
+      _nodes.push(node);
+      return node;
+    },
+
+    // 手書きの線を1本ぶん追加する。worldPoints はマウスの軌跡（ワールド座標の [x, y] 配列）。
+    // 外接矩形と正規化点列の計算は src/draw.js に任せる。
+    // 色は設定「新規ノードの色」のコネクタ用の色を使い回す（どちらも「キャンバスに引く線」なので、
+    // 色の選択肢も同じ Theme.edgeColors を出す）。点が1つも無ければ何も作らず null を返す
+    addDrawing(worldPoints, strokeWidth) {
+      const width = strokeWidth || DEFAULT_STROKE_WIDTH;
+      const box = Draw.normalize(worldPoints, width);
+      if (!box) return null;
+      const node = {
+        id: crypto.randomUUID(),
+        type: 'draw',
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        points: box.points,
+        style: { ...Theme.get().edge, width }
       };
       _nodes.push(node);
       return node;
