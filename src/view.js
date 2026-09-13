@@ -320,6 +320,7 @@ const View = (() => {
     const hit = document.createElementNS(SVG_NS, 'path');
     hit.classList.add('draw-hit');
     hit.setAttribute('d', d);
+    hit.setAttribute('fill', 'none');
     hit.setAttribute('stroke-width', hitWidth(node.style.width));
     g.appendChild(hit);
 
